@@ -1,0 +1,843 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Church of Christ Igbogbo — Bible Quiz Bee</title>
+<meta name="theme-color" content="#0F2450">
+<meta name="description" content="Mock Bible quiz bee builder for Church of Christ Igbogbo">
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icons/icon-192.png">
+<link rel="icon" href="./icons/icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/10.12.2/firebase-firestore-compat.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,500;0,600;0,700;1,500&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap');
+
+:root{
+  --navy:#0F2450; --navy2:#16305E; --navy3:#1F3F7A;
+  --red:#C6001A; --red-dark:#8C0013; --red-bg:#FBE3E6;
+  --gold:#F2C94C; --gold-dark:#B8890B; --gold-bg:#FDF3D6;
+  --sky:#2A82D6; --ice:#EAF4FC;
+  --paper:#FFFFFF; --paper2:#F7F9FC;
+  --moss:#2F8F5B; --moss-bg:#E3F5EA;
+  --text:#14213D; --muted:#5C6A87;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;background:var(--navy);}
+body{font-family:'Inter',sans-serif; color:var(--text);}
+.wrap{max-width:920px; margin:0 auto; min-height:100vh; display:flex; flex-direction:column;}
+.topbar{
+  background:linear-gradient(160deg,var(--navy) 0%,var(--navy2) 100%);
+  padding:18px 20px; display:flex; align-items:center; gap:14px;
+  border-bottom:3px solid var(--gold);
+  position:sticky; top:0; z-index:20;
+}
+.topbar img{height:46px; width:auto; display:block; filter:drop-shadow(0 2px 5px rgba(0,0,0,.35));}
+.topbar-text{color:#EAF1FF;}
+.topbar-title{font-family:'Lora',serif; font-weight:700; font-size:16px; line-height:1.15;}
+.topbar-tag{font-size:10.5px; color:#9FB3D9; letter-spacing:.02em;}
+.topbar-code{margin-left:auto; font-family:'IBM Plex Mono',monospace; background:var(--navy3); color:var(--gold); border:1px dashed var(--gold); padding:5px 11px; border-radius:8px; font-size:13px; font-weight:600; letter-spacing:.08em;}
+.main{flex:1; padding:22px 18px 60px; background:var(--navy);}
+.shell{max-width:640px; margin:0 auto;}
+@media(min-width:760px){ .main{padding:34px 30px 70px;} .shell{max-width:100%;} }
+
+.eyebrow{font-family:'IBM Plex Mono',monospace; font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--gold); margin:0 0 8px; display:flex; align-items:center; gap:8px;}
+.h1{font-family:'Lora',serif; font-weight:700; font-size:clamp(22px,4vw,30px); letter-spacing:-0.01em; margin:0 0 6px; color:#fff;}
+.sub{color:#B9C6E4; font-size:14px; line-height:1.55; margin:0 0 20px; max-width:56ch;}
+
+.card{background:var(--paper); color:var(--text); border-radius:14px; padding:20px; margin-bottom:16px; box-shadow:0 10px 26px rgba(0,0,0,.22);}
+.card-dark{background:var(--navy2); color:#EAF1FF; border:1px solid #2a4576;}
+.grid2{display:grid; grid-template-columns:1fr; gap:14px;}
+@media(min-width:700px){ .grid2{grid-template-columns:1fr 1fr;} .grid3{display:grid; grid-template-columns:repeat(3,1fr); gap:14px;} }
+.grid3{display:grid; grid-template-columns:1fr; gap:14px;}
+
+.row{display:flex; gap:10px; flex-wrap:wrap; align-items:center;}
+.col{display:flex; flex-direction:column; gap:6px;}
+.label{font-size:11.5px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.05em;}
+.input,.select,.textarea{
+  font-family:'Inter',sans-serif; font-size:14.5px; padding:11px 13px; border-radius:9px;
+  border:1.5px solid #D7DEEA; background:#fff; color:var(--text); width:100%;
+}
+.input:focus,.select:focus,.textarea:focus{outline:2px solid var(--sky); outline-offset:1px; border-color:var(--sky);}
+.textarea{resize:vertical; min-height:56px;}
+.btn{
+  font-family:'Inter',sans-serif; font-weight:700; font-size:14px; padding:12px 20px; border-radius:10px;
+  border:none; cursor:pointer; transition:transform .08s ease, opacity .15s ease, box-shadow .15s ease;
+  display:inline-flex; align-items:center; gap:8px; justify-content:center;
+}
+.btn:active{transform:scale(.97);}
+.btn-primary{background:var(--red); color:#fff; box-shadow:0 4px 12px rgba(198,0,26,.35);}
+.btn-primary:hover{background:var(--red-dark);}
+.btn-gold{background:var(--gold); color:#3A2A00;}
+.btn-gold:hover{background:#e0b93f;}
+.btn-ghost{background:transparent; color:#fff; border:1.5px solid #4a628f;}
+.btn-ghost:hover{background:var(--navy3);}
+.btn-dark{background:var(--navy3); color:#fff;}
+.btn-outline{background:#fff; color:var(--navy); border:1.5px solid #D7DEEA;}
+.btn-outline:hover{border-color:var(--sky); color:var(--sky);}
+.btn-danger{background:var(--red); color:#fff;}
+.btn-sm{padding:7px 12px; font-size:12.5px; border-radius:7px;}
+.btn:disabled{opacity:.45; cursor:not-allowed;}
+.btn-block{width:100%;}
+
+.pill{display:inline-block; padding:3px 11px; border-radius:99px; font-size:10.5px; font-weight:800; letter-spacing:.04em; text-transform:uppercase;}
+.pill-active{background:var(--moss-bg); color:var(--moss);}
+.pill-ended{background:var(--red-bg); color:var(--red);}
+.divider{height:1px; background:#2a4576; margin:20px 0; border:none;}
+
+.code-chip{font-family:'IBM Plex Mono',monospace; font-weight:700; letter-spacing:.12em; background:var(--navy2); color:var(--gold); padding:9px 16px; border-radius:9px; border:1.5px dashed var(--gold); display:inline-block; font-size:17px;}
+.passage-tag{background:var(--ice); color:var(--navy); font-size:12.5px; padding:5px 11px; border-radius:7px; margin:3px 5px 3px 0; display:inline-flex; align-items:center; gap:7px; font-weight:600;}
+.passage-tag button{background:none; border:none; color:#7a8bab; cursor:pointer; font-size:14px; line-height:1;}
+.group-card{border:1.5px solid #E4E9F2; border-radius:12px; padding:16px; margin-bottom:12px; background:var(--paper2);}
+.group-title{font-weight:700; font-size:15px; display:flex; justify-content:space-between; align-items:center; gap:8px;}
+.names-note{font-size:12px; color:var(--muted); margin-top:6px;}
+
+.numgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(54px,1fr)); gap:9px; margin:16px 0;}
+@media(min-width:700px){ .numgrid{grid-template-columns:repeat(auto-fill,minmax(60px,1fr));} }
+.num{
+  font-family:'IBM Plex Mono',monospace; font-weight:700; font-size:15px; aspect-ratio:1;
+  display:flex; align-items:center; justify-content:center; border-radius:9px; cursor:pointer;
+  background:var(--navy2); color:var(--gold); border:1.5px solid #2a4576; position:relative;
+}
+.num:hover{background:var(--navy3);}
+.num[data-done="correct"]{background:var(--moss); color:#fff; border-color:var(--moss);}
+.num[data-done="incorrect"]{background:var(--red); color:#fff; border-color:var(--red);}
+.num[data-done="skip"]{background:#5b6478; color:#dde1ea; border-color:#5b6478;}
+
+.qcard{background:var(--paper); color:var(--text); border-radius:14px; padding:24px; margin:16px 0; border-top:5px solid var(--gold);}
+.qref{font-family:'IBM Plex Mono',monospace; font-size:11px; color:var(--gold-dark); text-transform:uppercase; letter-spacing:.08em; margin-bottom:10px; font-weight:700;}
+.qtext{font-family:'Lora',serif; font-size:clamp(18px,3vw,21px); font-weight:600; line-height:1.42; margin-bottom:16px;}
+.answerbox{background:var(--moss-bg); color:#1e4b31; border-radius:9px; padding:13px 15px; font-size:14.5px; margin-top:8px; display:none;}
+.answerbox.shown{display:block;}
+.progressbar{height:9px; background:var(--navy2); border-radius:99px; overflow:hidden; margin:10px 0 4px;}
+.progressfill{height:100%; background:var(--gold); transition:width .4s ease;}
+.table{width:100%; border-collapse:collapse; font-size:13.5px;}
+.table th{text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); padding:7px 9px; border-bottom:1.5px solid #E4E9F2;}
+.table td{padding:9px 9px; border-bottom:1px solid #EFF2F8;}
+.stat{display:flex; flex-direction:column; align-items:center; padding:16px 10px; background:var(--navy2); border-radius:12px; flex:1; min-width:84px;}
+.stat-num{font-family:'Lora',serif; font-size:27px; font-weight:700; color:var(--gold);}
+.stat-label{font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:#9FB3D9; margin-top:2px;}
+.namechip{background:var(--navy2); border:1.5px solid #2a4576; color:#fff; padding:15px; border-radius:11px; cursor:pointer; font-weight:700; text-align:center; flex:1; min-width:120px;}
+.namechip:hover{background:var(--navy3); border-color:var(--gold);}
+.linkbtn{background:none; border:none; color:var(--gold); text-decoration:underline; cursor:pointer; font-size:13px; padding:0;}
+.toast{position:fixed; top:16px; left:50%; transform:translateX(-50%); background:var(--red); color:#fff; padding:10px 18px; border-radius:9px; font-size:13px; z-index:999; box-shadow:0 6px 18px rgba(0,0,0,.3);}
+.empty{text-align:center; color:#9FB3D9; font-size:13.5px; padding:34px 10px;}
+.spin{width:16px;height:16px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite; display:inline-block;}
+@keyframes spin{to{transform:rotate(360deg);}}
+.speakbtn{background:var(--ice); color:var(--sky); border:1.5px solid #cfe3f7;}
+.speakbtn:hover{background:#d9ecfb;}
+.consolewrap{border:1.5px dashed #2a4576; border-radius:14px; padding:16px; margin-top:18px;}
+footer.credit{text-align:center; font-size:11px; color:#5f7096; padding:18px 0 6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="topbar">
+    <img src="./logo.png" alt="Church of Christ Igbogbo logo">
+    <div class="topbar-text">
+      <div class="topbar-title">Church of Christ Igbogbo</div>
+      <div class="topbar-tag">Bible Quiz Bee — Mock Round Builder</div>
+    </div>
+    <div id="topbar-code-slot"></div>
+  </div>
+  <div class="main"><div class="shell" id="app"></div></div>
+  <footer class="credit">Built for Church of Christ Igbogbo &middot; Cyberhayde</footer>
+</div>
+
+<script>
+(function(){
+
+// ============================================================
+// CONFIG — fill these in before hosting outside Claude.ai.
+// See README.md in the download bundle for step-by-step setup.
+// ============================================================
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBviTuaF8ZSDU_PalmLMLWpjMcH6gOBWTE",
+  authDomain: "cbq1-310a6.firebaseapp.com",
+  projectId: "cbq1-310a6",
+  storageBucket: "cbq1-310a6.firebasestorage.app",
+  messagingSenderId: "479965122733",
+  appId: "1:479965122733:web:467ee6cabafca3f8417624"
+};// Optional: paste a free Google AI Studio key here so quiz masters never
+// have to enter one. Leave blank to have each master paste their own
+// (safer if this code lives in a public repo).
+let GEMINI_API_KEY = "AQ.Ab8RN6KPaSI7w6A6wv_gtEZu4HJqcI-b6fN7n7JKVYcfCdj7CQ";
+// Free-tier Gemini model. Check https://aistudio.google.com/ if this
+// ever stops working and swap in whatever's current on the free tier.
+const GEMINI_MODEL = "gemini-2.5-flash";
+// ============================================================
+
+let db = null;
+try{
+  if(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.projectId && window.firebase){
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+  }
+}catch(e){ console.error('firebase init failed', e); }
+const hasClaudeStorage = (typeof window.storage !== 'undefined');
+const hasAnyStorage = !!db || hasClaudeStorage;
+
+const BOOKS = [
+  ['Genesis',50],['Exodus',40],['Leviticus',27],['Numbers',36],['Deuteronomy',34],
+  ['Joshua',24],['Judges',21],['Ruth',4],['1 Samuel',31],['2 Samuel',24],
+  ['1 Kings',22],['2 Kings',25],['1 Chronicles',29],['2 Chronicles',36],['Ezra',10],
+  ['Nehemiah',13],['Esther',10],['Job',42],['Psalms',150],['Proverbs',31],
+  ['Ecclesiastes',12],['Song of Solomon',8],['Isaiah',66],['Jeremiah',52],['Lamentations',5],
+  ['Ezekiel',48],['Daniel',12],['Hosea',14],['Joel',3],['Amos',9],
+  ['Obadiah',1],['Jonah',4],['Micah',7],['Nahum',3],['Habakkuk',3],
+  ['Zephaniah',3],['Haggai',2],['Zechariah',14],['Malachi',4],
+  ['Matthew',28],['Mark',16],['Luke',24],['John',21],['Acts',28],
+  ['Romans',16],['1 Corinthians',16],['2 Corinthians',13],['Galatians',6],['Ephesians',6],
+  ['Philippians',4],['Colossians',4],['1 Thessalonians',5],['2 Thessalonians',3],['1 Timothy',6],
+  ['2 Timothy',4],['Titus',3],['Philemon',1],['Hebrews',13],['James',5],
+  ['1 Peter',5],['2 Peter',3],['1 John',5],['2 John',1],['3 John',1],
+  ['Jude',1],['Revelation',22]
+];
+function bookCode(name){ return name.replace(/[^A-Za-z0-9]/g,'').toUpperCase().slice(0,12); }
+function slug(s){ return (s||'').toLowerCase().trim().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'').slice(0,40) || 'p'+Math.random().toString(36).slice(2,7); }
+function rid(n){ const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s=''; for(let i=0;i<n;i++) s+=c[Math.floor(Math.random()*c.length)]; return s; }
+function esc(s){ return (s==null?'':String(s)).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function shuffle(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+function speak(text){
+  try{
+    if(!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.rate = 0.95; u.pitch = 1;
+    window.speechSynthesis.speak(u);
+  }catch(e){ console.error('speech failed', e); }
+}
+
+function fsDocId(key){ return key.replace(/[\/]/g,'_'); }
+async function sGet(key){
+  try{
+    if(db){
+      const doc = await db.collection('quizbee_kv').doc(fsDocId(key)).get();
+      return doc.exists ? JSON.parse(doc.data().value) : null;
+    }
+    if(hasClaudeStorage){ const r = await window.storage.get(key, true); return r ? JSON.parse(r.value) : null; }
+    return null;
+  }catch(e){ return null; }
+}
+async function sSet(key, val){
+  try{
+    if(db){ await db.collection('quizbee_kv').doc(fsDocId(key)).set({ value: JSON.stringify(val), updatedAt: Date.now() }); return true; }
+    if(hasClaudeStorage){ await window.storage.set(key, JSON.stringify(val), true); return true; }
+    return false;
+  }catch(e){ console.error('storage set failed', key, e); return false; }
+}
+
+function poolIdFor(passages){
+  return 'pool_' + passages.map(p=>`${bookCode(p.book)}${p.start}-${p.end}`).sort().join('_').slice(0,140);
+}
+function passageStr(p){ return p.start===p.end ? `${p.book} ${p.start}` : `${p.book} ${p.start}-${p.end}`; }
+function passagesStr(list){ return list.map(passageStr).join('; '); }
+
+let sessionGeminiKey = '';
+function activeGeminiKey(){ return GEMINI_API_KEY || sessionGeminiKey; }
+
+async function callGemini(prompt){
+  const key = activeGeminiKey();
+  if(!key) throw new Error('missing_gemini_key');
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-goog-api-key': key},
+    body: JSON.stringify({
+      contents:[{ parts:[{ text: prompt }] }],
+      generationConfig:{ maxOutputTokens: 3000, temperature: 0.9 }
+    })
+  });
+  const data = await res.json();
+  if(data.error) throw new Error(data.error.message || 'Gemini API error');
+  const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+  const text = parts ? parts.map(p=>p.text||'').join('') : '';
+  if(!text) throw new Error('No text in Gemini response');
+  let raw = text.trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+  const start = raw.indexOf('['); const end = raw.lastIndexOf(']');
+  if(start===-1||end===-1) throw new Error('No JSON array found');
+  return JSON.parse(raw.slice(start,end+1));
+}
+
+const BATCH_SIZE = 30;
+async function generateBatch(passages, recentQs){
+  const prompt = `You are writing trivia questions for a children's Bible quiz bee (ages 8-14), Protestant canon.
+Passage scope (draw questions from across ALL of this range, not just the beginning): ${passagesStr(passages)}
+Write exactly ${BATCH_SIZE} NEW short factual questions. Good topics: names, numbers, places, who-said-it, what-happened-next, order of events. Each answer should be short (a few words).
+Do not repeat or closely resemble any of these already-used questions: ${recentQs.slice(-20).join(' || ') || '(none yet)'}
+Return ONLY a raw JSON array, nothing else, in exactly this shape:
+[{"q":"question text","a":"expected short answer","ref":"Book Chapter:Verse","src":"Book name"}]`;
+  const items = await callGemini(prompt);
+  return items.filter(it=>it && it.q && it.a).map(it=>({
+    id: 'q'+Math.random().toString(36).slice(2,9),
+    q: String(it.q).slice(0,300),
+    a: String(it.a).slice(0,200),
+    ref: String(it.ref||'').slice(0,60),
+    src: String(it.src||'').slice(0,40)
+  }));
+}
+
+const CONCURRENCY = 4;
+async function ensurePool(passages, target, onProgress){
+  const poolId = poolIdFor(passages);
+  const key = 'sq:pool:'+poolId;
+  let pool = await sGet(key);
+  if(!pool) pool = {poolId, passages, target, status:'idle', questions:[]};
+  if(pool.questions.length >= target && pool.status==='ready') return pool;
+  pool.status='generating'; pool.target = target;
+  await sSet(key, pool);
+  let rounds = 0;
+  while(pool.questions.length < target && rounds < 10){
+    rounds++;
+    const seen = new Set(pool.questions.map(q=>q.q));
+    const need = target - pool.questions.length;
+    const batchesThisRound = Math.max(1, Math.min(CONCURRENCY, Math.ceil(need/BATCH_SIZE)));
+    const promises = [];
+    for(let i=0;i<batchesThisRound;i++){
+      promises.push(generateBatch(passages, pool.questions.map(q=>q.q)).catch(e=>{ console.error('batch failed', e); return []; }));
+    }
+    const results = await Promise.all(promises);
+    for(const batch of results){
+      for(const item of batch){
+        if(!seen.has(item.q) && pool.questions.length < target*1.4){
+          pool.questions.push(item); seen.add(item.q);
+        }
+      }
+    }
+    await sSet(key, pool);
+    if(onProgress) onProgress({...pool});
+  }
+  pool.status='ready';
+  await sSet(key, pool);
+  if(onProgress) onProgress({...pool});
+  return pool;
+}
+
+// ---------- App state ----------
+let S = { view:'home', code:null, meta:null, role:null, poll:null, busy:false, toast:null, poolCache:{}, monitorData:{}, activePlay:null, resultsUsers:null };
+
+function setToast(msg){ S.toast = msg; render(); setTimeout(()=>{ if(S.toast===msg){ S.toast=null; render(); } }, 3200); }
+function stopPoll(){ if(S.poll){ clearInterval(S.poll); S.poll=null; } }
+function startPoll(fn, ms){ stopPoll(); S.poll = setInterval(fn, ms||3000); }
+
+async function loadMeta(code){ return await sGet('sq:meta:'+code); }
+async function saveMeta(){ await sSet('sq:meta:'+S.code, S.meta); }
+
+// ---------- Actions: Master ----------
+async function createSession(){
+  if(!hasAnyStorage){ setToast('Storage is not configured — see the README'); return; }
+  const code = rid(5);
+  S.code = code;
+  S.meta = { code, createdAt: Date.now(), status:'setup', autoReveal:false, questionsPerPool:100, groups:[] };
+  await saveMeta();
+  S.role='master'; S.view='m-setup';
+  render();
+}
+function addGroup(){
+  S.meta.groups.push({ id:'g'+Math.random().toString(36).slice(2,7), name:`Group ${S.meta.groups.length+1}`, passages:[], names:[] });
+  saveMeta(); render();
+}
+function removeGroup(gid){ S.meta.groups = S.meta.groups.filter(g=>g.id!==gid); saveMeta(); render(); }
+function addPassageToGroup(gid, book, start, end){
+  const g = S.meta.groups.find(g=>g.id===gid); if(!g) return;
+  start=parseInt(start); end=parseInt(end);
+  if(!book || isNaN(start) || isNaN(end) || start<1 || end<start) { setToast('Enter a valid chapter range'); return; }
+  g.passages.push({book, start, end});
+  saveMeta(); render();
+}
+function removePassage(gid, idx){
+  const g = S.meta.groups.find(g=>g.id===gid); if(!g) return;
+  g.passages.splice(idx,1); saveMeta(); render();
+}
+function setGroupNames(gid, raw){
+  const g = S.meta.groups.find(g=>g.id===gid); if(!g) return;
+  g.names = raw.split(/[\n,]/).map(s=>s.trim()).filter(Boolean);
+  saveMeta(); render();
+}
+function setGroupName(gid, name){
+  const g = S.meta.groups.find(g=>g.id===gid); if(!g) return;
+  g.name = name || g.name; saveMeta();
+}
+async function generateAllPools(){
+  if(!activeGeminiKey()){ setToast('Paste a free Gemini API key first (below)'); return; }
+  S.busy=true; render();
+  const uniquePools = {};
+  for(const g of S.meta.groups){
+    if(!g.passages.length) continue;
+    const pid = poolIdFor(g.passages);
+    g.poolId = pid;
+    uniquePools[pid] = g.passages;
+  }
+  await saveMeta();
+  await Promise.all(Object.keys(uniquePools).map(pid =>
+    ensurePool(uniquePools[pid], S.meta.questionsPerPool, (snap)=>{ S.poolCache[pid]=snap; render(); })
+  ));
+  S.busy=false;
+  const anyEmpty = Object.values(S.poolCache).some(p=>p.questions.length===0);
+  if(anyEmpty) setToast('No questions came back — check your Gemini API key is valid');
+  render();
+}
+async function openSession(){
+  if(!S.meta.groups.length || S.meta.groups.every(g=>!g.names.length)){
+    setToast('Add at least one group with names first'); return;
+  }
+  S.meta.status='active'; await saveMeta();
+  S.view='m-live';
+  startPoll(refreshMonitor, 3500);
+  await refreshMonitor();
+}
+async function refreshMonitor(){
+  const fresh = await loadMeta(S.code);
+  if(fresh) S.meta = fresh;
+  const data = {};
+  for(const g of S.meta.groups){
+    for(const name of g.names){
+      const uid = g.id+'_'+slug(name);
+      const u = await sGet('sq:user:'+S.code+':'+uid);
+      if(u){
+        const vals = Object.values(u.results||{});
+        data[uid] = { answered: vals.length, correct: vals.filter(v=>v.verdict==='correct').length };
+      }
+    }
+  }
+  S.monitorData = data;
+  render();
+}
+async function endSession(){
+  S.meta.status='ended'; await saveMeta();
+  stopPoll();
+  S.view='m-results';
+  await loadAllUsersForResults();
+}
+async function loadAllUsersForResults(){
+  S.resultsUsers = [];
+  for(const g of S.meta.groups){
+    for(const name of g.names){
+      const uid = g.id+'_'+slug(name);
+      const u = await sGet('sq:user:'+S.code+':'+uid);
+      const pool = g.poolId ? await sGet('sq:pool:'+g.poolId) : null;
+      S.resultsUsers.push({ group:g, name, user:u, pool });
+    }
+  }
+  render();
+}
+
+// ---------- Actions: Participant / shared play session ----------
+async function joinWithCode(code){
+  if(!hasAnyStorage){ setToast('Storage is not configured — see the README'); return; }
+  code = (code||'').trim().toUpperCase();
+  if(!code){ setToast('Enter a session code'); return; }
+  const meta = await loadMeta(code);
+  if(!meta){ setToast('No session found with that code'); return; }
+  S.code = code; S.meta = meta; S.role='participant'; S.view='p-name';
+  render();
+}
+async function loadPlaySession(gid, name){
+  const g = S.meta.groups.find(g=>g.id===gid); if(!g) return null;
+  const uid = gid+'_'+slug(name);
+  let user = await sGet('sq:user:'+S.code+':'+uid);
+  if(!user){
+    user = { id:uid, name, groupId:gid, poolId:g.poolId||null, board:[], results:{} };
+    await sSet('sq:user:'+S.code+':'+uid, user);
+  }
+  let pool = null;
+  if(g.poolId){
+    pool = await sGet('sq:pool:'+g.poolId);
+    if(pool && !user.board.length && pool.status==='ready' && pool.questions.length){
+      const order = shuffle(pool.questions.map((q,i)=>i));
+      user.board = order.map((qi,idx)=>({number: idx+1, qId: pool.questions[qi].id}));
+      user.poolId = g.poolId;
+      await sSet('sq:user:'+S.code+':'+uid, user);
+    }
+  }
+  return { code:S.code, groupId:gid, groupName:g.name, passages:g.passages, userId:uid, user, pool, selNum:null, revealed:false };
+}
+async function pickParticipant(gid, name){
+  S.activePlay = await loadPlaySession(gid, name);
+  S.view='p-play';
+  startPoll(refreshActivePlay, 4000);
+  render();
+}
+async function refreshActivePlay(){
+  if(!S.activePlay) return;
+  const meta = await loadMeta(S.code);
+  if(meta) S.meta = meta;
+  const fresh = await loadPlaySession(S.activePlay.groupId, S.activePlay.user.name);
+  if(fresh){
+    fresh.selNum = S.activePlay.selNum;
+    fresh.revealed = S.activePlay.revealed;
+    S.activePlay = fresh;
+  }
+  render();
+}
+async function consoleSelect(compound){
+  if(!compound){ S.activePlay=null; render(); return; }
+  const [gid, ...rest] = compound.split('::');
+  const name = rest.join('::');
+  S.activePlay = await loadPlaySession(gid, name);
+  render();
+}
+function pickNumber(num){ if(!S.activePlay) return; S.activePlay.selNum = num; S.activePlay.revealed = !!S.meta.autoReveal; render(); }
+function toggleReveal(){ if(!S.activePlay) return; S.activePlay.revealed = !S.activePlay.revealed; render(); }
+async function markResult(qId, num, verdict){
+  if(!S.activePlay) return;
+  S.activePlay.user.results[qId] = { number:num, verdict, revealed: !!S.activePlay.revealed };
+  await sSet('sq:user:'+S.code+':'+S.activePlay.userId, S.activePlay.user);
+  S.activePlay.selNum = null; S.activePlay.revealed=false;
+  render();
+  if(S.role==='master') refreshMonitor();
+}
+function findQuestion(pool, qId){ return pool ? pool.questions.find(q=>q.id===qId) : null; }
+
+// ---------- Render ----------
+function render(){
+  const el = document.getElementById('app');
+  if(!el) return;
+  document.getElementById('topbar-code-slot').innerHTML = S.code ? `<div class="code-chip" style="font-size:13px;padding:6px 12px;">${esc(S.code)}</div>` : '';
+  let html = S.toast ? `<div class="toast">${esc(S.toast)}</div>` : '';
+  if(S.view==='home') html += renderHome();
+  else if(S.view==='m-setup') html += renderMasterSetup();
+  else if(S.view==='m-live') html += renderMasterLive();
+  else if(S.view==='m-results') html += renderMasterResults();
+  else if(S.view==='p-join') html += renderJoin();
+  else if(S.view==='p-name') html += renderPickName();
+  else if(S.view==='p-play') html += renderPlayScreen();
+  el.innerHTML = html;
+  wireEvents(el);
+}
+
+function renderHome(){
+  return `
+  <div class="eyebrow">Bible Quiz Bee</div>
+  <div class="h1">Mock Quiz Builder</div>
+  <p class="sub">Set up a practice session, assign passages to each contestant or group, and run a live mock round before the real quiz — with or without extra devices.</p>
+  ${!hasAnyStorage ? `<div class="card" style="border:1.5px solid var(--red);margin-bottom:16px;"><b style="color:var(--red);">Storage isn't configured yet.</b> <span style="font-size:13.5px;">Add your Firebase config in the code before this will save anything outside of Claude.ai — see the README in the download.</span></div>` : ''}
+  <div class="card card-dark grid2">
+    <button class="btn btn-primary btn-block" data-act="go-master">I'm the Quiz Master — start a session</button>
+    <button class="btn btn-ghost btn-block" data-act="go-join">I'm a Contestant — join with a code</button>
+  </div>`;
+}
+function renderJoin(){
+  return `
+  <div class="eyebrow">Join a Session</div>
+  <div class="h1">Enter your quiz code</div>
+  <div class="card">
+    <div class="col">
+      <label class="label">Session Code</label>
+      <input class="input" id="joincode" placeholder="e.g. K7QX2" maxlength="6" style="text-transform:uppercase;letter-spacing:.1em;font-family:'IBM Plex Mono',monospace;">
+      <button class="btn btn-primary" data-act="do-join" style="margin-top:10px;">Join</button>
+    </div>
+  </div>
+  <button class="linkbtn" data-act="go-home">&larr; back</button>`;
+}
+function renderPickName(){
+  const groups = S.meta.groups.filter(g=>g.names.length);
+  return `
+  <div class="eyebrow">Session ${esc(S.code)}</div>
+  <div class="h1">Which name is yours?</div>
+  <p class="sub">Tap your name to enter the quiz.</p>
+  ${groups.map(g=>`
+    <div style="margin-bottom:18px;">
+      <div class="label" style="color:#B9C6E4;margin-bottom:8px;">${esc(g.name)} &middot; ${esc(passagesStr(g.passages))}</div>
+      <div class="row">${g.names.map(n=>`<button class="namechip" data-act="pick-name" data-gid="${g.id}" data-name="${esc(n)}">${esc(n)}</button>`).join('')}</div>
+    </div>
+  `).join('') || '<div class="empty">No contestants have been added to this session yet.</div>'}
+  <button class="linkbtn" data-act="go-join">&larr; use a different code</button>`;
+}
+
+function renderMasterSetup(){
+  const m = S.meta;
+  return `
+  <div class="eyebrow">Quiz Master &middot; Setup</div>
+  <div class="h1">Session <span class="code-chip">${esc(S.code)}</span></div>
+  <p class="sub">Share this code with contestants who have their own device. No spare devices? You can also run every group yourself from the live console after opening the session.</p>
+
+  ${!hasAnyStorage ? `<div class="card" style="border:1.5px solid var(--red);"><b style="color:var(--red);">Storage isn't configured.</b> <span style="font-size:13.5px;">This app needs Firebase set up before it'll save sessions outside of Claude.ai. See the README that came with the download.</span></div>` : ''}
+
+  <div class="card grid2">
+    <div class="col">
+      <label class="label">Questions per pool</label>
+      <select class="select" id="qpp">
+        ${[20,40,60,100,150,200].map(n=>`<option value="${n}" ${m.questionsPerPool===n?'selected':''}>${n} questions</option>`).join('')}
+      </select>
+    </div>
+    <div class="col">
+      <label class="label">Show answer by default</label>
+      <select class="select" id="autoreveal">
+        <option value="0" ${!m.autoReveal?'selected':''}>Hidden until tapped</option>
+        <option value="1" ${m.autoReveal?'selected':''}>Shown immediately</option>
+      </select>
+    </div>
+  </div>
+
+  ${!GEMINI_API_KEY ? `<div class="card">
+    <label class="label">Google AI Studio API key (free)</label>
+    <input class="input" id="geminikey" placeholder="Paste your free Gemini API key" value="${esc(sessionGeminiKey)}">
+    <div style="font-size:12px;color:var(--muted);margin-top:6px;">Get one free in under a minute at <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">aistudio.google.com/apikey</a> — no card required. It stays in your browser and is only used to generate questions.</div>
+  </div>` : ''}
+
+  ${m.groups.map(g=>renderGroupCard(g)).join('')}
+  <button class="btn btn-outline" data-act="add-group" style="margin-bottom:18px;">+ Add group / contestant</button>
+
+  <hr class="divider">
+  <div class="row" style="gap:10px;">
+    <button class="btn btn-dark" data-act="gen-pools" ${S.busy?'disabled':''}>
+      ${S.busy?'<span class="spin"></span> Generating…':'Generate questions'}
+    </button>
+    <button class="btn btn-primary" data-act="open-session" ${S.busy?'disabled':''}>Open session &rarr;</button>
+  </div>
+  ${renderPoolStatusSummary()}
+  <div style="margin-top:14px;"><button class="linkbtn" data-act="go-home">&larr; exit setup</button></div>
+  `;
+}
+function renderPoolStatusSummary(){
+  const ids = [...new Set(S.meta.groups.filter(g=>g.poolId).map(g=>g.poolId))];
+  if(!ids.length) return '';
+  return `<div style="margin-top:14px;">
+    ${ids.map(pid=>{
+      const snap = S.poolCache[pid];
+      const count = snap ? snap.questions.length : 0;
+      const target = snap ? snap.target : S.meta.questionsPerPool;
+      const pct = target ? Math.min(100, Math.round(count/target*100)) : 0;
+      return `<div style="margin-bottom:8px;">
+        <div style="font-size:11.5px;color:#9FB3D9;font-family:'IBM Plex Mono',monospace;">${esc(pid.replace('pool_','').slice(0,40))} — ${count}/${target}</div>
+        <div class="progressbar"><div class="progressfill" style="width:${pct}%;"></div></div>
+      </div>`;
+    }).join('')}
+    <div style="font-size:12px;color:#9FB3D9;">Identical passage sets across groups automatically share one pool.</div>
+  </div>`;
+}
+function renderGroupCard(g){
+  return `
+  <div class="group-card">
+    <div class="group-title">
+      <input class="input" style="font-weight:700;font-size:14.5px;padding:7px 9px;max-width:200px;" value="${esc(g.name)}" data-act="rename-group" data-gid="${g.id}">
+      <button class="btn btn-sm btn-danger" data-act="remove-group" data-gid="${g.id}">Remove</button>
+    </div>
+    <div style="margin-top:12px;">
+      <div class="label">Passages</div>
+      <div style="margin:6px 0;">
+        ${g.passages.map((p,i)=>`<span class="passage-tag">${esc(passageStr(p))} <button data-act="rm-passage" data-gid="${g.id}" data-idx="${i}">&times;</button></span>`).join('') || '<span style="font-size:12.5px;color:#999;">none yet</span>'}
+      </div>
+      <div class="row">
+        <select class="select" data-role="book" style="max-width:180px;">
+          ${BOOKS.map(b=>`<option value="${esc(b[0])}">${esc(b[0])}</option>`).join('')}
+        </select>
+        <input class="input" data-role="start" type="number" min="1" placeholder="from ch." style="max-width:90px;">
+        <input class="input" data-role="end" type="number" min="1" placeholder="to ch." style="max-width:90px;">
+        <button class="btn btn-sm btn-dark" data-act="add-passage" data-gid="${g.id}">+ Add</button>
+      </div>
+    </div>
+    <div style="margin-top:14px;">
+      <div class="label">Contestant name(s) — one per line, or comma-separated</div>
+      <textarea class="textarea" data-act="set-names" data-gid="${g.id}" placeholder="e.g. Grace&#10;Daniel&#10;Faith">${esc(g.names.join('\n'))}</textarea>
+      <div class="names-note">${g.names.length} contestant${g.names.length===1?'':'s'} will get identical questions from this group's passages.</div>
+    </div>
+  </div>`;
+}
+
+function renderMasterLive(){
+  const m = S.meta;
+  const allNames = [];
+  m.groups.forEach(g=>g.names.forEach(n=>allNames.push({gid:g.id, name:n, group:g.name})));
+  return `
+  <div class="eyebrow">Quiz Master &middot; Live <span class="pill pill-active">Session active</span></div>
+  <div class="h1">Session <span class="code-chip">${esc(S.code)}</span></div>
+  <p class="sub">Contestants with a device join by entering this code, then tapping their name. Don't have enough devices? Use the console below to run any contestant yourself — you can switch between them in any order.</p>
+  ${m.groups.map(g=>renderMonitorGroup(g)).join('')}
+  <div class="consolewrap">
+    <div class="label" style="margin-bottom:8px;">Run a contestant here (quiz master console)</div>
+    <select class="select" id="console-select">
+      <option value="">— select a contestant —</option>
+      ${allNames.map(n=>`<option value="${n.gid}::${esc(n.name)}" ${S.activePlay && S.activePlay.userId===(n.gid+'_'+slug(n.name))?'selected':''}>${esc(n.name)} (${esc(n.group)})</option>`).join('')}
+    </select>
+    <div id="console-board">${S.activePlay ? renderBoardUI(S.activePlay, true) : ''}</div>
+  </div>
+  <hr class="divider">
+  <button class="btn btn-danger" data-act="end-session">End quiz &amp; view analysis</button>
+  `;
+}
+function renderMonitorGroup(g){
+  return `
+  <div class="card">
+    <div class="group-title" style="margin-bottom:6px;">
+      <span>${esc(g.name)}</span>
+      <span style="font-size:12px;color:#8a8a8a;">${esc(passagesStr(g.passages))}</span>
+    </div>
+    <table class="table">
+      <tr><th>Name</th><th>Answered</th><th>Correct</th></tr>
+      ${g.names.map(n=>{
+        const uid = g.id+'_'+slug(n);
+        const d = (S.monitorData||{})[uid];
+        return `<tr><td>${esc(n)}</td><td>${d?d.answered:'—'}</td><td>${d?d.correct:'—'}</td></tr>`;
+      }).join('')}
+    </table>
+  </div>`;
+}
+
+function renderMasterResults(){
+  const rows = (S.resultsUsers||[]).map(r=>{
+    const results = r.user ? Object.values(r.user.results||{}) : [];
+    const correct = results.filter(x=>x.verdict==='correct').length;
+    const incorrect = results.filter(x=>x.verdict==='incorrect').length;
+    const answered = correct+incorrect;
+    const acc = answered ? Math.round(correct/answered*100) : 0;
+    return {name:r.name, group:r.group.name, correct, incorrect, answered, acc, r};
+  }).sort((a,b)=>b.acc-a.acc || b.correct-a.correct);
+  return `
+  <div class="eyebrow">Quiz Master &middot; Results <span class="pill pill-ended">Ended</span></div>
+  <div class="h1">Session ${esc(S.code)} — Analysis</div>
+  <div class="card">
+    <table class="table">
+      <tr><th>Name</th><th>Group</th><th>Answered</th><th>Correct</th><th>Accuracy</th></tr>
+      ${rows.map(row=>`<tr><td>${esc(row.name)}</td><td style="font-size:12px;color:#888;">${esc(row.group)}</td><td>${row.answered}</td><td>${row.correct}</td><td><b>${row.acc}%</b></td></tr>`).join('') || '<tr><td colspan="5" style="color:#999;">No answers recorded.</td></tr>'}
+    </table>
+  </div>
+  ${(S.resultsUsers||[]).map(r=>renderUserDetail(r)).join('')}
+  <button class="linkbtn" data-act="go-home" style="margin-top:6px;">&larr; back to home</button>
+  `;
+}
+function renderUserDetail(r){
+  if(!r.user || !r.pool) return '';
+  const results = r.user.results||{};
+  const answeredIds = Object.keys(results);
+  if(!answeredIds.length) return '';
+  const byPassage = {};
+  answeredIds.forEach(qId=>{
+    const q = r.pool.questions.find(x=>x.id===qId); if(!q) return;
+    const key = q.src || 'General';
+    byPassage[key] = byPassage[key] || {correct:0,total:0};
+    byPassage[key].total++;
+    if(results[qId].verdict==='correct') byPassage[key].correct++;
+  });
+  const missed = answeredIds.filter(id=>results[id].verdict==='incorrect').map(id=>r.pool.questions.find(q=>q.id===id)).filter(Boolean);
+  const correct = answeredIds.filter(id=>results[id].verdict==='correct').length;
+  const skip = answeredIds.filter(id=>results[id].verdict==='skip').length;
+  return `
+  <div class="card">
+    <div class="group-title" style="margin-bottom:10px;">${esc(r.name)} <span style="font-size:12px;color:#888;font-weight:400;">${esc(r.group.name)}</span></div>
+    <div class="row" style="margin-bottom:14px;">
+      <div class="stat"><div class="stat-num">${correct}</div><div class="stat-label">Correct</div></div>
+      <div class="stat"><div class="stat-num">${answeredIds.length-correct-skip}</div><div class="stat-label">Incorrect</div></div>
+      <div class="stat"><div class="stat-num">${answeredIds.length}</div><div class="stat-label">Attempted</div></div>
+    </div>
+    ${Object.keys(byPassage).length>1 ? `<div style="margin-bottom:12px;">
+      <div class="label" style="color:#8a8a8a;">By passage</div>
+      ${Object.entries(byPassage).map(([k,v])=>`<div style="font-size:13px;color:#333;margin:3px 0;">${esc(k)}: ${v.correct}/${v.total} correct</div>`).join('')}
+    </div>`:''}
+    ${missed.length ? `<div>
+      <div class="label" style="color:#8a8a8a;">Missed questions — worth reviewing</div>
+      <ul style="margin:8px 0 0; padding-left:18px; font-size:13px; color:#333;">
+        ${missed.map(q=>`<li style="margin-bottom:6px;"><b>${esc(q.q)}</b><br><span style="color:#2F8F5B;">Answer: ${esc(q.a)}</span> <span style="color:#999;">(${esc(q.ref)})</span></li>`).join('')}
+      </ul>
+    </div>` : '<div style="font-size:13px;color:#2F8F5B;">No missed questions — strong round!</div>'}
+  </div>`;
+}
+
+function renderPlayScreen(){
+  const play = S.activePlay;
+  if(!play) return '<div class="empty">No active contestant.</div>';
+  return `
+  <div class="eyebrow">${esc(play.groupName)} &middot; ${esc(passagesStr(play.passages))}</div>
+  <div class="h1">Hi ${esc(play.user.name)}</div>
+  ${renderBoardUI(play, false)}`;
+}
+
+function renderBoardUI(play, isConsole){
+  if(!play.pool || play.pool.status!=='ready' || !play.pool.questions.length){
+    const count = play.pool ? play.pool.questions.length : 0;
+    const target = play.pool ? play.pool.target : null;
+    return `
+    <p class="sub" style="margin-top:10px;">Getting ${esc(play.user.name)}'s questions ready… ${count}${target?'/'+target:''} prepared.</p>
+    <div class="progressbar"><div class="progressfill" style="width:${target?Math.min(100,Math.round(count/target*100)):8}%;"></div></div>`;
+  }
+  const total = play.user.board.length;
+  const done = Object.keys(play.user.results).length;
+  let questionHtml = '';
+  if(play.selNum!=null){
+    const b = play.user.board.find(x=>x.number===play.selNum);
+    const q = b ? findQuestion(play.pool, b.qId) : null;
+    if(q){
+      const already = play.user.results[q.id];
+      questionHtml = `
+      <div class="qcard">
+        <div class="qref">Number ${play.selNum} &middot; ${esc(q.ref||q.src||'')}</div>
+        <div class="qtext">${esc(q.q)}</div>
+        <div class="row">
+          <button class="btn btn-sm speakbtn" data-act="speak-q" data-text="${esc(q.q)}">🔊 Read question aloud</button>
+          <button class="btn btn-sm btn-dark" data-act="toggle-reveal">${play.revealed?'Hide answer':'Show answer'}</button>
+        </div>
+        <div class="answerbox ${play.revealed?'shown':''}">
+          <b>Answer:</b> ${esc(q.a)}
+          <div style="margin-top:8px;"><button class="btn btn-sm speakbtn" data-act="speak-a" data-text="${esc(q.a)}">🔊 Read answer aloud</button></div>
+        </div>
+        <div class="row" style="margin-top:16px;">
+          <button class="btn btn-sm" style="background:var(--moss);color:#fff;" data-act="mark" data-verdict="correct" data-qid="${q.id}" data-num="${play.selNum}">Correct</button>
+          <button class="btn btn-sm" style="background:var(--red);color:#fff;" data-act="mark" data-verdict="incorrect" data-qid="${q.id}" data-num="${play.selNum}">Incorrect</button>
+          <button class="btn btn-sm btn-dark" data-act="mark" data-verdict="skip" data-qid="${q.id}" data-num="${play.selNum}">Skip</button>
+        </div>
+        ${already? `<div style="margin-top:10px;font-size:12px;color:#999;">Previously marked: ${already.verdict}</div>`:''}
+      </div>`;
+    }
+  }
+  return `
+  <p class="sub" style="margin-top:${isConsole?'12':'0'}px;">${done} of ${total} answered${isConsole?'':''}. Pick a number to get the next question.</p>
+  ${questionHtml}
+  <div class="numgrid">
+    ${play.user.board.map(b=>{
+      const r = play.user.results[b.qId];
+      return `<div class="num" ${r?`data-done="${r.verdict}"`:''} data-act="pick-num" data-num="${b.number}">${b.number}</div>`;
+    }).join('')}
+  </div>`;
+}
+
+// ---------- Events ----------
+function wireEvents(root){
+  root.querySelectorAll('[data-act]').forEach(node=>{
+    const act = node.getAttribute('data-act');
+    const evt = (node.tagName==='TEXTAREA' || (node.tagName==='INPUT' && act==='rename-group')) ? 'change' : 'click';
+    node.addEventListener(evt, async (e)=>{
+      if(act==='go-master'){ await createSession(); }
+      else if(act==='go-join'){ stopPoll(); S.view='p-join'; render(); }
+      else if(act==='go-home'){ stopPoll(); S.view='home'; S.meta=null; S.code=null; S.activePlay=null; render(); }
+      else if(act==='do-join'){ const v = document.getElementById('joincode').value; await joinWithCode(v); }
+      else if(act==='pick-name'){ await pickParticipant(node.dataset.gid, node.dataset.name); }
+      else if(act==='add-group'){ addGroup(); }
+      else if(act==='remove-group'){ removeGroup(node.dataset.gid); }
+      else if(act==='rename-group'){ setGroupName(node.dataset.gid, node.value); }
+      else if(act==='add-passage'){
+        const card = node.closest('.group-card');
+        const book = card.querySelector('[data-role="book"]').value;
+        const start = card.querySelector('[data-role="start"]').value;
+        const end = card.querySelector('[data-role="end"]').value;
+        addPassageToGroup(node.dataset.gid, book, start, end);
+      }
+      else if(act==='rm-passage'){ removePassage(node.dataset.gid, parseInt(node.dataset.idx)); }
+      else if(act==='set-names'){ setGroupNames(node.dataset.gid, node.value); }
+      else if(act==='gen-pools'){ await generateAllPools(); }
+      else if(act==='open-session'){ await openSession(); }
+      else if(act==='end-session'){ await endSession(); }
+      else if(act==='pick-num'){ pickNumber(parseInt(node.dataset.num)); }
+      else if(act==='toggle-reveal'){ toggleReveal(); }
+      else if(act==='mark'){ await markResult(node.dataset.qid, parseInt(node.dataset.num), node.dataset.verdict); }
+      else if(act==='speak-q' || act==='speak-a'){ speak(node.dataset.text); }
+    });
+  });
+  const qpp = root.querySelector('#qpp');
+  if(qpp) qpp.addEventListener('change', ()=>{ S.meta.questionsPerPool = parseInt(qpp.value); saveMeta(); });
+  const ar = root.querySelector('#autoreveal');
+  if(ar) ar.addEventListener('change', ()=>{ S.meta.autoReveal = ar.value==='1'; saveMeta(); });
+  const gk = root.querySelector('#geminikey');
+  if(gk) gk.addEventListener('change', ()=>{ sessionGeminiKey = gk.value.trim(); });
+  const cs = root.querySelector('#console-select');
+  if(cs) cs.addEventListener('change', ()=>{ consoleSelect(cs.value); });
+}
+
+if("serviceWorker" in navigator){ window.addEventListener("load", function(){ navigator.serviceWorker.register("./sw.js").catch(function(e){ console.warn("SW register failed", e); }); }); }
+
+render();
+})();
+</script>
+</body>
+</html>
