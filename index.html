@@ -274,7 +274,7 @@ Return ONLY a raw JSON array, nothing else, in exactly this shape:
   }));
 }
 
-const CONCURRENCY = 2;
+const CONCURRENCY = 1
 async function ensurePool(passages, target, onProgress){
   const poolId = poolIdFor(passages);
   const key = 'sq:pool:'+poolId;
