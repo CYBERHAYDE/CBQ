@@ -7,7 +7,7 @@
 // file via netlify.toml. Then: Site settings -> Environment variables ->
 // add GEMINI_API_KEY with your Gemini key as the value.
 
-const GEMINI_MODEL = "gemini-2.5-flash"; // check aistudio.google.com if this ever stops working
+const GEMINI_MODEL = "gemini-3.6-flash"; // check aistudio.google.com if this ever stops working
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
