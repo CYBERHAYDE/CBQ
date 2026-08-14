@@ -153,12 +153,12 @@ footer.credit{text-align:center; font-size:11px; color:#5f7096; padding:18px 0 6
 // See README.md in the download bundle for step-by-step setup.
 // ============================================================
 const FIREBASE_CONFIG = {
-  apiKey: "",
-  authDomain: "",
-  projectId: "",
-  storageBucket: "",
-  messagingSenderId: "",
-  appId: ""
+  apiKey: "AIzaSyBviTuaF8ZSDU_PalmLMLWpjMcH6gOBWTE",
+  authDomain: "cbq1-310a6.firebaseapp.com",
+  projectId: "cbq1-310a6",
+  storageBucket: "cbq1-310a6.firebasestorage.app",
+  messagingSenderId: "479965122733",
+  appId: "1:479965122733:web:467ee6cabafca3f8417624"
 };
 // ============================================================
 
@@ -232,7 +232,7 @@ function passagesStr(list){ return list.map(passageStr).join('; '); }
 // Questions are generated through a small serverless proxy you deploy once
 // (Cloudflare Worker, free). It holds your Gemini key server-side so it
 // never appears in this file or your GitHub repo. See README.md.
-const WORKER_URL = "";
+const WORKER_URL = "https://stellar-sunshine-398f8f.netlify.app/.netlify/functions/gemini-proxy";
 function hasWorkerConfigured(){ return !!WORKER_URL && !WORKER_URL.includes('your-worker'); }
 
 async function callGemini(prompt){
