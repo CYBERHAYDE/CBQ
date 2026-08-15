@@ -160,6 +160,7 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "479965122733",
   appId: "1:479965122733:web:467ee6cabafca3f8417624"
 };
+
 // ============================================================
 
 let db = null;
@@ -226,659 +227,157 @@ async function sSet(key, val){
 function poolIdFor(passages){
   return 'pool_' + passages.map(p=>`${bookCode(p.book)}${p.start}-${p.end}`).sort().join('_').slice(0,140);
 }
-function chapterBankKey(book, chapter){
-  return `qb:${bookCode(book)}:${parseInt(chapter)}`;
-}
-async function getChapterBank(book, chapter){
-  const key = chapterBankKey(book, chapter);
-  const bank = await sGet(key);
-
-  if(!bank){
-    return {
-      book,
-      chapter: parseInt(chapter),
-      questions: []
-    };
-  }
-
-  return {
-    book,
-    chapter: parseInt(chapter),
-    questions: Array.isArray(bank.questions) ? bank.questions : []
-  };
-}
-
-async function saveChapterBank(book, chapter, questions){
-  const key = chapterBankKey(book, chapter);
-
-  const bank = {
-    book,
-    chapter: parseInt(chapter),
-    questions: Array.isArray(questions) ? questions : [],
-    updatedAt: Date.now()
-  };
-
-  await sSet(key, bank);
-
-  return bank;
-}
-async function importChapterQuestions(book, chapter, questions){
-  if(!book || !chapter){
-    throw new Error('Book and chapter are required');
-  }
-
-  if(!Array.isArray(questions)){
-    throw new Error('Questions must be an array');
-  }
-
-  const valid = questions
-    .filter(q => q && q.q && q.a)
-    .map(q => ({
-      id: q.id || ('q' + Math.random().toString(36).slice(2,9)),
-      q: String(q.q).trim().slice(0,300),
-      a: String(q.a).trim().slice(0,200),
-      ref: String(q.ref || '').trim().slice(0,60),
-      src: String(q.src || book).trim().slice(0,40),
-      book: book,
-      chapter: parseInt(chapter)
-    }))
-    .filter(q => q.q && q.a);
-
-  if(!valid.length){
-    throw new Error('No valid questions found');
-  }
-
-  const existingBank = await getChapterBank(book, chapter);
-
-  const seen = new Set(
-    existingBank.questions.map(q =>
-      String(q.q).trim().toLowerCase()
-    )
-  );
-
-  let added = 0;
-
-  for(const item of valid){
-    const key = item.q.toLowerCase();
-
-    if(seen.has(key)) continue;
-
-    existingBank.questions.push(item);
-    seen.add(key);
-    added++;
-  }
-
-  await saveChapterBank(
-    book,
-    chapter,
-    existingBank.questions
-  );
-
-  const result = await getChapterBank(book, chapter);
-
-  console.log(
-    `[Chapter Import] ${book} ${chapter}: ` +
-    `added ${added}, total ${result.questions.length}`
-  );
-
-  return result;
-}
-
-window.importChapterQuestions = importChapterQuestions;
-
-window.saveChapterBank = saveChapterBank;
 function passageStr(p){ return p.start===p.end ? `${p.book} ${p.start}` : `${p.book} ${p.start}-${p.end}`; }
 function passagesStr(list){ return list.map(passageStr).join('; '); }
-function chapterBankReady(bank){
-  return !!(
-    bank &&
-    Array.isArray(bank.questions) &&
-    bank.questions.length >= MIN_CHAPTER_QUESTIONS
-  );
+
+// ---------- Per-chapter question banks ----------
+// Each Bible chapter gets its own cached bank of questions, generated once
+// and reused forever after — by any group, any session, any chapter range
+// that includes it. You can also skip Gemini entirely for a chapter by
+// importing a JSON file of questions for it (see the Import card in setup).
+function chapterBankKey(book, chapter){ return 'qb:'+bookCode(book)+':'+parseInt(chapter); }
+async function getChapterBank(book, chapter){
+  const bank = await sGet(chapterBankKey(book, chapter));
+  return bank ? { book, chapter: parseInt(chapter), questions: Array.isArray(bank.questions) ? bank.questions : [] }
+              : { book, chapter: parseInt(chapter), questions: [] };
 }
-async function testChapterBank(book, chapter){
-  const bank = await getChapterBank(book, chapter);
-
-  console.log(
-    `[Chapter Bank] ${book} ${chapter}: ${bank.questions.length} questions`
-  );
-
+async function saveChapterBank(book, chapter, questions){
+  const bank = { book, chapter: parseInt(chapter), questions: Array.isArray(questions) ? questions : [], updatedAt: Date.now() };
+  await sSet(chapterBankKey(book, chapter), bank);
   return bank;
 }
-
-window.testChapterBank = testChapterBank;
-window.getChapterBank = getChapterBank;
+function chapterBankReady(bank){
+  return !!(bank && Array.isArray(bank.questions) && bank.questions.length >= MIN_CHAPTER_QUESTIONS);
+}
 
 // Questions are generated through a small serverless proxy you deploy once
-// (Cloudflare Worker, free). It holds your Gemini key server-side so it
-// never appears in this file or your GitHub repo. See README.md.
+// (Netlify Function or Cloudflare Worker, free). It holds your Gemini key
+// server-side so it never appears in this file or your GitHub repo. See README.md.
 const WORKER_URL = "https://stellar-sunshine-398f8f.netlify.app/.netlify/functions/gemini-proxy";
 function hasWorkerConfigured(){ return !!WORKER_URL && !WORKER_URL.includes('your-worker'); }
 
 async function callGemini(prompt){
   if(!hasWorkerConfigured()) throw new Error('missing_worker_url');
-
   const res = await fetch(WORKER_URL, {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body: JSON.stringify({
       contents:[{ parts:[{ text: prompt }] }],
-      generationConfig:{
-        maxOutputTokens: 6000,
-        temperature: 0.9
-      }
+      generationConfig:{ maxOutputTokens: 3000, temperature: 0.9 }
     })
   });
-
   const data = await res.json();
-
-  if(data.error){
-    throw new Error(data.error.message || 'Generation error');
-  }
-
-  const parts =
-    data.candidates &&
-    data.candidates[0] &&
-    data.candidates[0].content &&
-    data.candidates[0].content.parts;
-
-  const text = parts
-    ? parts.map(p => p.text || '').join('')
-    : '';
-
-  if(!text){
-    throw new Error('No text in response');
-  }
-
-  let raw = text.trim();
-
-  // Remove Markdown code fences if Gemini adds them
-  raw = raw
-    .replace(/^```json\s*/i, '')
-    .replace(/^```\s*/i, '')
-    .replace(/\s*```$/i, '')
-    .trim();
-
-  // Find the JSON array
+  if(data.error) throw new Error(data.error.message || 'Generation error');
+  const parts = data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts;
+  const text = parts ? parts.map(p=>p.text||'').join('') : '';
+  if(!text) throw new Error('No text in response');
+  let raw = text.trim().replace(/^```json\s*/i,'').replace(/^```\s*/i,'').replace(/\s*```$/i,'').trim();
   const start = raw.indexOf('[');
-
-  if(start === -1){
-    console.error('[Gemini] No JSON array found. Raw response:', raw);
-    throw new Error('No JSON array found');
+  if(start===-1) throw new Error('No JSON array found');
+  // Match the closing bracket properly (ignoring brackets inside quoted strings)
+  // rather than just using the last ']' in the response.
+  let depth=0, end=-1, inStr=false, esc=false;
+  for(let i=start;i<raw.length;i++){
+    const c = raw[i];
+    if(inStr){ if(esc) esc=false; else if(c==='\\') esc=true; else if(c==='"') inStr=false; continue; }
+    if(c==='"'){ inStr=true; continue; }
+    if(c==='[') depth++;
+    else if(c===']'){ depth--; if(depth===0){ end=i; break; } }
   }
-
-  // Find the matching closing bracket instead of
-  // blindly using the last character.
-  let depth = 0;
-  let end = -1;
-  let inString = false;
-  let escaped = false;
-
-  for(let i = start; i < raw.length; i++){
-    const char = raw[i];
-
-    if(inString){
-      if(escaped){
-        escaped = false;
-      } else if(char === '\\'){
-        escaped = true;
-      } else if(char === '"'){
-        inString = false;
-      }
-      continue;
-    }
-
-    if(char === '"'){
-      inString = true;
-      continue;
-    }
-
-    if(char === '['){
-      depth++;
-    } else if(char === ']'){
-      depth--;
-
-      if(depth === 0){
-        end = i;
-        break;
-      }
-    }
-  }
-
-  if(end === -1){
-    console.error('[Gemini] Incomplete JSON array. Raw response:', raw);
-    throw new Error('Incomplete JSON array');
-  }
-
-  const jsonText = raw.slice(start, end + 1);
-
-  try{
-    const parsed = JSON.parse(jsonText);
-
-    if(!Array.isArray(parsed)){
-      throw new Error('Gemini response was not an array');
-    }
-
-    return parsed;
-
-  } catch(parseError){
-    console.error('[Gemini] JSON parse failed:', parseError);
-    console.error('[Gemini] JSON text:', jsonText);
-
-    throw new Error('Invalid JSON returned by Gemini');
-  }
+  if(end===-1) throw new Error('Incomplete JSON array');
+  const parsed = JSON.parse(raw.slice(start, end+1));
+  if(!Array.isArray(parsed)) throw new Error('Response was not an array');
+  return parsed;
 }
 
-const MIN_CHAPTER_QUESTIONS = 50;
-const BATCH_SIZE = 10;
-async function generateBatch(passages, recentQs){
+const MIN_CHAPTER_QUESTIONS = 20;
+const BATCH_SIZE = 20;
+const CHAPTER_CONCURRENCY = 4;
+
+async function generateChapterBatch(book, chapter, recentQs){
   const prompt = `You are writing trivia questions for a children's Bible quiz bee (ages 8-14), Protestant canon.
-Passage scope (draw questions from across ALL of this range, not just the beginning): ${passagesStr(passages)}
-Write exactly ${BATCH_SIZE} NEW short factual questions. Good topics: names, numbers, places, who-said-it, what-happened-next, order of events. Each answer should be short (a few words).
+Bible scope: ${book} chapter ${chapter} ONLY.
+Write exactly ${BATCH_SIZE} NEW short factual questions based ONLY on ${book} chapter ${chapter}. Good topics: names, numbers, places, who-said-it, what-happened-next, order of events, commands. Each answer should be short (a few words).
 Do not repeat or closely resemble any of these already-used questions: ${recentQs.slice(-20).join(' || ') || '(none yet)'}
 Return ONLY a raw JSON array, nothing else, in exactly this shape:
-[{"q":"question text","a":"expected short answer","ref":"Book Chapter:Verse","src":"Book name"}]`;
+[{"q":"question text","a":"expected short answer","ref":"${book} ${chapter}:verse","src":"${book}"}]`;
   const items = await callGemini(prompt);
   return items.filter(it=>it && it.q && it.a).map(it=>({
     id: 'q'+Math.random().toString(36).slice(2,9),
     q: String(it.q).slice(0,300),
     a: String(it.a).slice(0,200),
     ref: String(it.ref||'').slice(0,60),
-    src: String(it.src||'').slice(0,40)
+    src: String(it.src||book).slice(0,40),
+    book, chapter: parseInt(chapter)
   }));
 }
-async function generateChapterBatch(book, chapter, recentQs){
-  const prompt = `You are writing trivia questions for a children's Bible quiz bee (ages 8-14), Protestant canon.
 
-Bible scope: ${book} chapter ${chapter} ONLY.
-
-Write exactly ${BATCH_SIZE} NEW short factual questions based ONLY on ${book} chapter ${chapter}.
-
-Questions should cover different details from the chapter, including:
-- names
-- numbers
-- places
-- events
-- commands
-- relationships
-- who said what
-- sequence/order of events
-- important facts
-
-Do not repeat or closely resemble any of these existing questions:
-${recentQs.slice(-30).join(' || ') || '(none yet)'}
-
-Every question MUST be answerable directly from ${book} chapter ${chapter}.
-
-Return ONLY a raw JSON array, nothing else, in exactly this shape:
-[{"q":"question text","a":"expected short answer","ref":"${book} ${chapter}:verse","src":"${book}"}]`;
-
-  const items = await callGemini(prompt);
-
-  return items
-    .filter(it=>it && it.q && it.a)
-    .map(it=>({
-      id: 'q'+Math.random().toString(36).slice(2,9),
-      q: String(it.q).slice(0,300),
-      a: String(it.a).slice(0,200),
-      ref: String(it.ref||'').slice(0,60),
-      src: String(it.src||book).slice(0,40),
-      book: book,
-      chapter: parseInt(chapter)
-    }));
-}
-window.generateChapterBatch = generateChapterBatch;
-
+// Generates (or tops up) one chapter's bank. Safe to call repeatedly —
+// if the bank already has enough questions (whether generated or
+// manually imported), it returns immediately with no API calls at all.
 async function ensureChapterBank(book, chapter, onProgress){
   let bank = await getChapterBank(book, chapter);
-
-  if(chapterBankReady(bank)){
-    if(onProgress) onProgress({...bank});
-    return bank;
-  }
-
+  if(chapterBankReady(bank)){ if(onProgress) onProgress({...bank}); return bank; }
   let attempts = 0;
-  const MAX_ATTEMPTS = 10;
-
-  while(
-    bank.questions.length < MIN_CHAPTER_QUESTIONS &&
-    attempts < MAX_ATTEMPTS
-  ){
+  const MAX_ATTEMPTS = 6;
+  while(bank.questions.length < MIN_CHAPTER_QUESTIONS && attempts < MAX_ATTEMPTS){
     attempts++;
-
-    const recentQs = bank.questions.map(q => q.q);
-
-    try {
-      const batch = await generateChapterBatch(
-        book,
-        chapter,
-        recentQs
-      );
-
-      if(!Array.isArray(batch) || batch.length === 0){
-        console.warn(
-          `[Chapter Bank] Empty batch for ${book} ${chapter}`
-        );
-        continue;
-      }
-
-      const seen = new Set(
-        bank.questions.map(q =>
-          String(q.q).trim().toLowerCase()
-        )
-      );
-
-      let added = 0;
-
+    const seen = new Set(bank.questions.map(q=>q.q));
+    try{
+      const batch = await generateChapterBatch(book, chapter, bank.questions.map(q=>q.q));
       for(const item of batch){
-
-        if(!item || !item.q || !item.a) continue;
-
-        const key = String(item.q)
-          .trim()
-          .toLowerCase();
-
-        if(seen.has(key)) continue;
-
-        seen.add(key);
-        bank.questions.push(item);
-        added++;
-
-        if(
-          bank.questions.length >=
-          MIN_CHAPTER_QUESTIONS
-        ){
-          break;
-        }
+        if(!seen.has(item.q)){ bank.questions.push(item); seen.add(item.q); }
       }
-
-      console.log(
-        `[Chapter Bank] ${book} ${chapter}: ` +
-        `added ${added}, total ${bank.questions.length}`
-      );
-
-      // IMPORTANT: save after every successful batch
-      await saveChapterBank(
-        book,
-        chapter,
-        bank.questions
-      );
-
-      if(onProgress){
-        onProgress({...bank});
-      }
-
-    } catch(error){
-
-      console.error(
-        `[Chapter Bank] Batch ${attempts} failed:`,
-        error
-      );
-
-      // Wait briefly before trying again.
-      await new Promise(resolve =>
-        setTimeout(resolve, 1500)
-      );
+      await saveChapterBank(book, chapter, bank.questions);
+      if(onProgress) onProgress({...bank});
+    }catch(e){
+      console.error('chapter batch failed', book, chapter, e);
+      await new Promise(r=>setTimeout(r, 1500));
     }
   }
-
-  if(bank.questions.length >= MIN_CHAPTER_QUESTIONS){
-    console.log(
-      `[Chapter Bank] READY: ${book} ${chapter} ` +
-      `with ${bank.questions.length} questions`
-    );
-  } else {
-    console.warn(
-      `[Chapter Bank] STOPPED: ${book} ${chapter} ` +
-      `has only ${bank.questions.length} questions ` +
-      `after ${attempts} attempts`
-    );
-  }
-
   return bank;
 }
 
-window.ensureChapterBank = ensureChapterBank;
-
-   
-const CONCURRENCY = 1
+// A group's "pool" is a materialized view combining the relevant chapter
+// banks for its passages. Chapters are fetched/generated in small parallel
+// chunks (gentle on per-minute API limits) — any chapter already cached or
+// imported costs nothing and returns instantly.
 async function ensurePool(passages, target, onProgress){
-
   const poolId = poolIdFor(passages);
-  const key = 'sq:pool:' + poolId;
+  const key = 'sq:pool:'+poolId;
+  let pool = { poolId, passages, target, status:'generating', questions:[] };
+  await sSet(key, pool);
 
-  let pool = await sGet(key);
-
-  if(!pool){
-    pool = {
-      poolId,
-      passages,
-      target,
-      status:'idle',
-      questions:[]
-    };
+  const chapterList = [];
+  for(const p of passages){
+    const start = parseInt(p.start), end = parseInt(p.end);
+    for(let ch=start; ch<=end; ch++) chapterList.push({ book:p.book, chapter:ch });
   }
 
-  /*
-    ----------------------------------------------------------
-    FIRST: Try to build the session pool from imported
-    chapter banks.
-    ----------------------------------------------------------
-  */
-
-  let importedQuestions = [];
-
-  for(const passage of passages){
-
-    /*
-      A passage can cover multiple chapters.
-      Example:
-      Genesis 1-3
-    */
-
-    const start = parseInt(passage.start);
-    const end = parseInt(passage.end);
-
-    for(let chapter = start; chapter <= end; chapter++){
-
-      const bank = await getChapterBank(
-        passage.book,
-        chapter
-      );
-
-      if(
-        bank &&
-        Array.isArray(bank.questions) &&
-        bank.questions.length
-      ){
-
-        importedQuestions.push(
-          ...bank.questions
-        );
-
-        console.log(
-          `[Session Pool] Loaded ${bank.questions.length} ` +
-          `questions from ${passage.book} ${chapter}`
-        );
-      }
-    }
-  }
-
-  /*
-    Remove duplicate questions.
-  */
-
+  const combined = [];
   const seen = new Set();
-
-  importedQuestions =
-    importedQuestions.filter(q => {
-
-      if(!q || !q.q || !q.a) return false;
-
-      const key = String(q.q)
-        .trim()
-        .toLowerCase();
-
-      if(seen.has(key)) return false;
-
-      seen.add(key);
-
-      return true;
-    });
-
-  /*
-    If we have imported questions, use them.
-  */
-
-  if(importedQuestions.length){
-
-    pool.questions = shuffle(importedQuestions)
-      .slice(0, target);
-
-    pool.status =
-      pool.questions.length >= target
-        ? 'ready'
-        : 'ready';
-
-    pool.target = target;
-    pool.passages = passages;
-
-    await sSet(key, pool);
-
-    console.log(
-      `[Session Pool] ${poolId}: ` +
-      `using ${pool.questions.length} imported questions`
-    );
-
-    if(onProgress){
-      onProgress({...pool});
-    }
-
-    return pool;
-  }
-
-  /*
-    ----------------------------------------------------------
-    FALLBACK:
-    If there is no imported chapter bank, use Gemini generation
-    exactly as before.
-    ----------------------------------------------------------
-  */
-
-  if(
-    pool.questions.length >= target &&
-    pool.status === 'ready'
-  ){
-
-    if(onProgress){
-      onProgress({...pool});
-    }
-
-    return pool;
-  }
-
-  pool.status = 'generating';
-  pool.target = target;
-
-  await sSet(key, pool);
-
-  let rounds = 0;
-
-  while(
-    pool.questions.length < target &&
-    rounds < 10
-  ){
-
-    rounds++;
-
-    const seenPool = new Set(
-      pool.questions.map(q =>
-        String(q.q).trim().toLowerCase()
-      )
-    );
-
-    const need =
-      target - pool.questions.length;
-
-    const batchesThisRound =
-      Math.max(
-        1,
-        Math.min(
-          CONCURRENCY,
-          Math.ceil(need / BATCH_SIZE)
-        )
-      );
-
-    const promises = [];
-
-    for(
-      let i = 0;
-      i < batchesThisRound;
-      i++
-    ){
-
-      promises.push(
-        generateBatch(
-          passages,
-          pool.questions.map(q => q.q)
-        ).catch(error => {
-
-          console.error(
-            '[Session Pool] Batch failed:',
-            error
-          );
-
-          return [];
-        })
-      );
-    }
-
-    const results =
-      await Promise.all(promises);
-
-    for(const batch of results){
-
-      for(const item of batch){
-
-        if(!item || !item.q) continue;
-
-        const qKey =
-          String(item.q)
-            .trim()
-            .toLowerCase();
-
-        if(
-          !seenPool.has(qKey) &&
-          pool.questions.length < target * 1.4
-        ){
-
-          pool.questions.push(item);
-
-          seenPool.add(qKey);
-        }
+  for(let i=0; i<chapterList.length; i+=CHAPTER_CONCURRENCY){
+    const chunk = chapterList.slice(i, i+CHAPTER_CONCURRENCY);
+    const banks = await Promise.all(chunk.map(c =>
+      ensureChapterBank(c.book, c.chapter).catch(e=>{ console.error(e); return {questions:[]}; })
+    ));
+    for(const bank of banks){
+      for(const q of bank.questions){
+        if(!seen.has(q.q)){ combined.push(q); seen.add(q.q); }
       }
     }
-
+    pool.questions = combined.length > target ? shuffle(combined).slice(0, target) : combined;
     await sSet(key, pool);
-
-    if(onProgress){
-      onProgress({...pool});
-    }
+    if(onProgress) onProgress({...pool});
+    if(i+CHAPTER_CONCURRENCY < chapterList.length){ await new Promise(r=>setTimeout(r, 3000)); }
   }
-
-  pool.status =
-    pool.questions.length >= target
-      ? 'ready'
-      : 'idle';
-
+  pool.questions = combined.length > target ? shuffle(combined).slice(0, target) : combined;
+  pool.status = 'ready';
   await sSet(key, pool);
-
-  if(onProgress){
-    onProgress({...pool});
-  }
-
+  if(onProgress) onProgress({...pool});
   return pool;
 }
+
 // ---------- App state ----------
 let S = { view:'home', code:null, meta:null, role:null, poll:null, busy:false, toast:null, poolCache:{}, monitorData:{}, activePlay:null, resultsUsers:null };
 
@@ -944,105 +443,13 @@ async function generateAllPools(){
   render();
 }
 async function openSession(){
-
-  if(
-    !S.meta.groups.length ||
-    S.meta.groups.every(g=>!g.names.length)
-  ){
-    setToast('Add at least one group with names first');
-    return;
+  if(!S.meta.groups.length || S.meta.groups.every(g=>!g.names.length)){
+    setToast('Add at least one group with names first'); return;
   }
-
-  /*
-    Build the session pools from the existing chapter banks
-    before opening the session.
-  */
-
-  S.busy = true;
-  render();
-
-  try{
-
-    const uniquePools = {};
-
-    for(const g of S.meta.groups){
-
-      if(!g.passages || !g.passages.length){
-        continue;
-      }
-
-      const pid = poolIdFor(g.passages);
-
-      g.poolId = pid;
-      uniquePools[pid] = g.passages;
-    }
-
-    await saveMeta();
-
-    for(const pid of Object.keys(uniquePools)){
-
-      const passages = uniquePools[pid];
-
-      console.log(
-        `[Open Session] Preparing pool ${pid}`
-      );
-
-      const pool = await ensurePool(
-        passages,
-        S.meta.questionsPerPool,
-        (snap) => {
-
-          S.poolCache[pid] = snap;
-
-          console.log(
-            `[Open Session] Pool ${pid}: ` +
-            `${snap.questions.length} questions`
-          );
-
-          render();
-        }
-      );
-
-      S.poolCache[pid] = pool;
-    }
-
-    /*
-      Make sure the latest metadata is saved.
-    */
-
-    await saveMeta();
-
-    S.meta.status = 'active';
-
-    await saveMeta();
-
-    S.busy = false;
-
-    S.view = 'm-live';
-
-    startPoll(
-      refreshMonitor,
-      3500
-    );
-
-    await refreshMonitor();
-
-  }catch(error){
-
-    console.error(
-      '[Open Session] Failed:',
-      error
-    );
-
-    S.busy = false;
-
-    setToast(
-      'Could not prepare the question pool: ' +
-      (error.message || error)
-    );
-
-    render();
-  }
+  S.meta.status='active'; await saveMeta();
+  S.view='m-live';
+  startPoll(refreshMonitor, 3500);
+  await refreshMonitor();
 }
 async function refreshMonitor(){
   const fresh = await loadMeta(S.code);
@@ -1232,55 +639,26 @@ function renderMasterSetup(){
   ${m.groups.map(g=>renderGroupCard(g)).join('')}
   <button class="btn btn-outline" data-act="add-group" style="margin-bottom:18px;">+ Add group / contestant</button>
 
- <hr class="divider">
+  <hr class="divider">
+  <div class="row" style="gap:10px;">
+    <button class="btn btn-dark" data-act="gen-pools" ${S.busy?'disabled':''}>
+      ${S.busy?'<span class="spin"></span> Generating…':'Generate questions'}
+    </button>
+    <button class="btn btn-primary" data-act="open-session" ${S.busy?'disabled':''}>Open session &rarr;</button>
+  </div>
+  ${renderPoolStatusSummary()}
 
-<div class="row" style="gap:10px;">
-  <button class="btn btn-dark" data-act="gen-pools" ${S.busy?'disabled':''}>
-    ${S.busy?'<span class="spin"></span> Generating…':'Generate questions'}
-  </button>
+  <div class="card" style="margin-top:16px;">
+    <div class="label">Import questions (optional, free)</div>
+    <p class="sub" style="margin:6px 0 10px;">Skip Gemini for any chapters covered here — upload one JSON file with questions for a single chapter or an entire book at once. Ask Claude to write a set and export it as JSON, then import it below.</p>
+    <input type="file" id="questionPoolFile" accept=".json,application/json">
+    <button class="btn btn-outline" type="button" data-act="import-question-pool" id="importQuestionPoolBtn" style="margin-top:10px;">Import questions</button>
+    <div id="questionImportStatus" style="margin-top:8px;"></div>
+  </div>
 
-  <button class="btn btn-primary" data-act="open-session" ${S.busy?'disabled':''}>
-    Open session &rarr;
-  </button>
-</div>
-
-${renderPoolStatusSummary()}
-
-<div class="card" style="margin-top:16px;">
-  <div class="label">Import question pool</div>
-
-  <p class="sub" style="margin:6px 0 10px;">
-    Import questions generated externally. JSON format only.
-  </p>
-
-  <input
-    type="file"
-    id="questionPoolFile"
-    accept=".json,application/json"
-  >
-
- <button
-  class="btn btn-outline"
-  type="button"
-  data-act="import-question-pool"
-  id="importQuestionPoolBtn"
-  style="margin-top:10px;"
->
-  Import questions
-</button>
-
-  <div
-    id="questionImportStatus"
-    style="margin-top:8px;"
-  ></div>
-</div>
-
-<div style="margin-top:14px;">
-  <button class="linkbtn" data-act="go-home">&larr; exit setup</button>
-</div>
-`;
+  <div style="margin-top:14px;"><button class="linkbtn" data-act="go-home">&larr; exit setup</button></div>
+  `;
 }
-
 function renderPoolStatusSummary(){
   const ids = [...new Set(S.meta.groups.filter(g=>g.poolId).map(g=>g.poolId))];
   if(!ids.length) return '';
@@ -1290,12 +668,13 @@ function renderPoolStatusSummary(){
       const count = snap ? snap.questions.length : 0;
       const target = snap ? snap.target : S.meta.questionsPerPool;
       const pct = target ? Math.min(100, Math.round(count/target*100)) : 0;
+      const label = snap && snap.passages ? passagesStr(snap.passages) : pid.replace('pool_','').slice(0,40);
       return `<div style="margin-bottom:8px;">
-        <div style="font-size:11.5px;color:#9FB3D9;font-family:'IBM Plex Mono',monospace;">${esc(pid.replace('pool_','').slice(0,40))} — ${count}/${target}</div>
+        <div style="font-size:11.5px;color:#9FB3D9;font-family:'IBM Plex Mono',monospace;">${esc(label)} — ${count} question${count===1?'':'s'} ready</div>
         <div class="progressbar"><div class="progressfill" style="width:${pct}%;"></div></div>
       </div>`;
     }).join('')}
-    <div style="font-size:12px;color:#9FB3D9;">Identical passage sets across groups automatically share one pool.</div>
+    <div style="font-size:12px;color:#9FB3D9;">Each book's questions are generated once and reused forever — any other group or session using the same book (any chapter range) reuses them instantly, free.</div>
   </div>`;
 }
 function renderGroupCard(g){
@@ -1482,192 +861,101 @@ function renderBoardUI(play, isConsole){
   </div>`;
 }
 
-// ---------- Events ----------
-
-  async function handleQuestionPoolImport(){
-
+// ---------- Manual question import (free — no Gemini) ----------
+// Accepts a flat array of questions covering ANY number of chapters/books in
+// one file: [{"q":"...","a":"...","ref":"Judges 8:4","src":"Judges"}, ...].
+// Each question is grouped by its OWN ref (or explicit book/chapter fields)
+// and saved into that chapter's bank — so one 1000-question file spanning a
+// whole book imports correctly, split per chapter.
+async function handleQuestionPoolImport(){
   const fileInput = document.getElementById('questionPoolFile');
   const status = document.getElementById('questionImportStatus');
-
   if(!fileInput || !fileInput.files.length){
-    if(status){
-      status.innerHTML = `
-        <div style="color:var(--red);font-weight:600;">
-          Please select a JSON file first.
-        </div>`;
-    }
+    if(status) status.innerHTML = '<span style="color:var(--red);">Please choose a JSON file first.</span>';
     return;
   }
-
   const file = fileInput.files[0];
-
-  function showProgress(percent, message){
-    if(!status) return;
-
-    status.innerHTML = `
-      <div style="margin-top:8px;">
-        <div style="
-          display:flex;
-          justify-content:space-between;
-          font-size:12px;
-          margin-bottom:5px;
-          color:var(--muted);
-        ">
-          <span>${esc(message)}</span>
-          <span>${percent}%</span>
-        </div>
-
-        <div style="
-          height:9px;
-          background:#E4E9F2;
-          border-radius:99px;
-          overflow:hidden;
-        ">
-          <div style="
-            height:100%;
-            width:${percent}%;
-            background:var(--moss);
-            transition:width .25s ease;
-          "></div>
-        </div>
-      </div>`;
-  }
+  const setStatus = (html) => { if(status) status.innerHTML = html; };
+  setStatus('<div class="sub" style="margin:8px 0 0;">Reading file…</div>');
 
   try{
-
-    showProgress(10, 'Reading JSON file…');
-
-    await new Promise(resolve => setTimeout(resolve, 150));
-
     const text = await file.text();
-
-    showProgress(25, 'Parsing JSON…');
-
-    await new Promise(resolve => setTimeout(resolve, 150));
-
     const data = JSON.parse(text);
-
-    let book = null;
-    let chapter = null;
-    let questions = null;
-
-    showProgress(40, 'Validating question data…');
-
-    await new Promise(resolve => setTimeout(resolve, 150));
+    let rawItems, defaultBook = null, defaultChapter = null;
 
     if(Array.isArray(data)){
+      rawItems = data;
+    } else if(data && typeof data==='object'){
+      defaultBook = data.book || data.src || null;
+      defaultChapter = data.chapter || null;
+      rawItems = data.questions || data.items || null;
+    }
+    if(!Array.isArray(rawItems) || !rawItems.length) throw new Error('No questions array found in this file.');
 
-      questions = data;
+    setStatus(`<div class="sub" style="margin:8px 0 0;">Sorting ${rawItems.length} questions by chapter…</div>`);
+    await new Promise(r=>setTimeout(r,0));
 
-      if(data.length){
-
-        book = data[0].src || null;
-
-        const refMatch = String(data[0].ref || '')
-          .match(/^(.+?)\s+(\d+):/);
-
-        if(refMatch){
-          book = refMatch[1];
-          chapter = parseInt(refMatch[2]);
-        }
+    const groups = new Map(); // "Book|chapter" -> {book, chapter, items:[]}
+    let invalid = 0;
+    for(const q of rawItems){
+      if(!q || !q.q || !q.a){ invalid++; continue; }
+      let book = q.book || defaultBook || null;
+      let chapter = q.chapter || defaultChapter || null;
+      if(!book || !chapter){
+        const refMatch = String(q.ref||'').match(/^(.+?)\s+(\d+):/);
+        if(refMatch){ book = book || refMatch[1]; chapter = chapter || parseInt(refMatch[2]); }
+        else if(!book){ book = q.src || null; }
       }
+      if(!book || !chapter){ invalid++; continue; }
+      chapter = parseInt(chapter);
+      const key = book+'|'+chapter;
+      if(!groups.has(key)) groups.set(key, { book, chapter, items: [] });
+      groups.get(key).items.push({
+        id: q.id || ('q'+Math.random().toString(36).slice(2,9)),
+        q: String(q.q).trim().slice(0,300),
+        a: String(q.a).trim().slice(0,200),
+        ref: String(q.ref||'').trim().slice(0,60),
+        src: String(q.src||book).trim().slice(0,40),
+        book, chapter
+      });
+    }
+    if(!groups.size) throw new Error('Could not determine book/chapter for any question — include "book"/"chapter" fields, or a "ref" like "Judges 8:4" on each question.');
 
-    }else if(data && typeof data === 'object'){
-
-      book = data.book || data.src || null;
-      chapter = data.chapter || null;
-      questions = data.questions || data.items || null;
+    let totalImported = 0, totalDup = 0, done = 0;
+    const chapterLines = [];
+    for(const { book, chapter, items } of groups.values()){
+      const existingBank = await getChapterBank(book, chapter);
+      const seen = new Set(existingBank.questions.map(x=>String(x.q).trim().toLowerCase()));
+      const newOnes = [];
+      for(const item of items){
+        const key = item.q.toLowerCase();
+        if(seen.has(key)){ totalDup++; continue; }
+        seen.add(key);
+        newOnes.push(item);
+      }
+      existingBank.questions.push(...newOnes);
+      await saveChapterBank(book, chapter, existingBank.questions);
+      totalImported += newOnes.length;
+      done++;
+      chapterLines.push(`${book} ${chapter}: +${newOnes.length} (now ${existingBank.questions.length})`);
+      setStatus(`<div class="sub" style="margin:8px 0 0;">Saved ${done}/${groups.size} chapters…</div>`);
+      await new Promise(r=>setTimeout(r,0)); // keep the UI responsive on large files
     }
 
-    if(!book || !chapter){
-      throw new Error(
-        'Could not determine the Bible book and chapter from the JSON file.'
-      );
-    }
-
-    if(!Array.isArray(questions)){
-      throw new Error(
-        'The JSON file does not contain a questions array.'
-      );
-    }
-
-    if(!questions.length){
-      throw new Error(
-        'The questions array is empty.'
-      );
-    }
-
-    showProgress(
-      55,
-      `Found ${questions.length} questions — importing ${book} ${chapter}…`
-    );
-
-    await new Promise(resolve => setTimeout(resolve, 150));
-
-    const result = await importChapterQuestions(
-      book,
-      chapter,
-      questions
-    );
-
-    showProgress(90, 'Saving question bank…');
-
-    await new Promise(resolve => setTimeout(resolve, 250));
-
-    showProgress(100, 'Import complete');
-
-    if(status){
-
-      const importedCount =
-        result.questions.length;
-
-      status.innerHTML += `
-        <div style="
-          margin-top:8px;
-          color:var(--moss);
-          font-size:13px;
-          font-weight:600;
-        ">
-          ✓ ${esc(book)} ${chapter} now has
-          ${importedCount} questions.
-        </div>`;
-    }
-
-    console.log(
-      `[Chapter Import] ${book} ${chapter}: ` +
-      `${result.questions.length} total questions`
-    );
-
+    setStatus(`<div style="margin-top:8px;padding:12px;background:var(--moss-bg);border-radius:9px;color:#1e4b31;">
+      <div style="font-weight:800;margin-bottom:6px;">✓ Import complete</div>
+      <div style="font-size:12.5px;">${rawItems.length} questions in file · ${totalImported} imported · ${totalDup} duplicates · ${invalid} invalid · across ${groups.size} chapter${groups.size===1?'':'s'}</div>
+      <div style="margin-top:8px;font-size:11px;max-height:130px;overflow-y:auto;line-height:1.5;">${chapterLines.map(l=>esc(l)).join('<br>')}</div>
+      <div style="margin-top:8px;font-size:11.5px;color:#2F6E49;">Saved permanently — any group using these chapters from now on uses these for free, no Gemini call.</div>
+    </div>`);
   }catch(error){
-
-    console.error(
-      '[Chapter Import] Failed:',
-      error
-    );
-
-    if(status){
-
-      status.innerHTML = `
-        <div style="
-          margin-top:8px;
-          color:var(--red);
-          font-size:13px;
-          font-weight:600;
-        ">
-          ✕ Import failed
-        </div>
-
-        <div style="
-          margin-top:4px;
-          color:var(--red);
-          font-size:12px;
-        ">
-          ${esc(error.message)}
-        </div>`;
-    }
+    console.error('import failed', error);
+    setStatus(`<div style="margin-top:8px;color:var(--red);font-weight:600;">${esc(error.message||String(error))}</div>`);
   }
 }
-  function wireEvents(root){
+
+// ---------- Events ----------
+function wireEvents(root){
   root.querySelectorAll('[data-act]').forEach(node=>{
     const act = node.getAttribute('data-act');
     const evt = (node.tagName==='TEXTAREA' || (node.tagName==='INPUT' && act==='rename-group')) ? 'change' : 'click';
@@ -1689,15 +977,12 @@ function renderBoardUI(play, isConsole){
       }
       else if(act==='rm-passage'){ removePassage(node.dataset.gid, parseInt(node.dataset.idx)); }
       else if(act==='set-names'){ setGroupNames(node.dataset.gid, node.value); }
-     else if(act==='gen-pools'){ 
-  await generateAllPools(); 
-}
-else if(act==='import-question-pool'){ 
-  await handleQuestionPoolImport(); 
-}
-else if(act==='open-session'){ 
-  await openSession(); 
-}
+      else if(act==='gen-pools'){ await generateAllPools(); }
+      else if(act==='import-question-pool'){
+        node.disabled = true; const oldText = node.textContent; node.textContent = 'Importing…';
+        try{ await handleQuestionPoolImport(); } finally { node.disabled = false; node.textContent = oldText; }
+      }
+      else if(act==='open-session'){ await openSession(); }
       else if(act==='end-session'){ await endSession(); }
       else if(act==='pick-num'){ pickNumber(parseInt(node.dataset.num)); }
       else if(act==='toggle-reveal'){ toggleReveal(); }
