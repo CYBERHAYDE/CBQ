@@ -328,6 +328,46 @@ Return ONLY a raw JSON array, nothing else, in exactly this shape:
     src: String(it.src||'').slice(0,40)
   }));
 }
+async function generateChapterBatch(book, chapter, recentQs){
+  const prompt = `You are writing trivia questions for a children's Bible quiz bee (ages 8-14), Protestant canon.
+
+Bible scope: ${book} chapter ${chapter} ONLY.
+
+Write exactly ${BATCH_SIZE} NEW short factual questions based ONLY on ${book} chapter ${chapter}.
+
+Questions should cover different details from the chapter, including:
+- names
+- numbers
+- places
+- events
+- commands
+- relationships
+- who said what
+- sequence/order of events
+- important facts
+
+Do not repeat or closely resemble any of these existing questions:
+${recentQs.slice(-30).join(' || ') || '(none yet)'}
+
+Every question MUST be answerable directly from ${book} chapter ${chapter}.
+
+Return ONLY a raw JSON array, nothing else, in exactly this shape:
+[{"q":"question text","a":"expected short answer","ref":"${book} ${chapter}:verse","src":"${book}"}]`;
+
+  const items = await callGemini(prompt);
+
+  return items
+    .filter(it=>it && it.q && it.a)
+    .map(it=>({
+      id: 'q'+Math.random().toString(36).slice(2,9),
+      q: String(it.q).slice(0,300),
+      a: String(it.a).slice(0,200),
+      ref: String(it.ref||'').slice(0,60),
+      src: String(it.src||book).slice(0,40),
+      book: book,
+      chapter: parseInt(chapter)
+    }));
+}
 
 const CONCURRENCY = 1
 async function ensurePool(passages, target, onProgress){
