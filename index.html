@@ -474,17 +474,108 @@ async function ensureChapterBank(book, chapter, onProgress){
     return bank;
   }
 
-  while(bank.questions.length < MIN_CHAPTER_QUESTIONS){
+  let attempts = 0;
+  const MAX_ATTEMPTS = 10;
 
-    const needed = MIN_CHAPTER_QUESTIONS - bank.questions.length;
+  while(
+    bank.questions.length < MIN_CHAPTER_QUESTIONS &&
+    attempts < MAX_ATTEMPTS
+  ){
+    attempts++;
 
     const recentQs = bank.questions.map(q => q.q);
 
-    const batch = await generateChapterBatch(
-      book,
-      chapter,
-      recentQs
+    try {
+      const batch = await generateChapterBatch(
+        book,
+        chapter,
+        recentQs
+      );
+
+      if(!Array.isArray(batch) || batch.length === 0){
+        console.warn(
+          `[Chapter Bank] Empty batch for ${book} ${chapter}`
+        );
+        continue;
+      }
+
+      const seen = new Set(
+        bank.questions.map(q =>
+          String(q.q).trim().toLowerCase()
+        )
+      );
+
+      let added = 0;
+
+      for(const item of batch){
+
+        if(!item || !item.q || !item.a) continue;
+
+        const key = String(item.q)
+          .trim()
+          .toLowerCase();
+
+        if(seen.has(key)) continue;
+
+        seen.add(key);
+        bank.questions.push(item);
+        added++;
+
+        if(
+          bank.questions.length >=
+          MIN_CHAPTER_QUESTIONS
+        ){
+          break;
+        }
+      }
+
+      console.log(
+        `[Chapter Bank] ${book} ${chapter}: ` +
+        `added ${added}, total ${bank.questions.length}`
+      );
+
+      // IMPORTANT: save after every successful batch
+      await saveChapterBank(
+        book,
+        chapter,
+        bank.questions
+      );
+
+      if(onProgress){
+        onProgress({...bank});
+      }
+
+    } catch(error){
+
+      console.error(
+        `[Chapter Bank] Batch ${attempts} failed:`,
+        error
+      );
+
+      // Wait briefly before trying again.
+      await new Promise(resolve =>
+        setTimeout(resolve, 1500)
+      );
+    }
+  }
+
+  if(bank.questions.length >= MIN_CHAPTER_QUESTIONS){
+    console.log(
+      `[Chapter Bank] READY: ${book} ${chapter} ` +
+      `with ${bank.questions.length} questions`
     );
+  } else {
+    console.warn(
+      `[Chapter Bank] STOPPED: ${book} ${chapter} ` +
+      `has only ${bank.questions.length} questions ` +
+      `after ${attempts} attempts`
+    );
+  }
+
+  return bank;
+}
+
+window.ensureChapterBank = ensureChapterBank;
 
     const existing = new Set(
       bank.questions.map(q => String(q.q).trim().toLowerCase())
