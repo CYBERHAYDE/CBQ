@@ -271,6 +271,15 @@ function chapterBankReady(bank){
     bank.questions.length >= MIN_CHAPTER_QUESTIONS
   );
 }
+async function testChapterBank(book, chapter){
+  const bank = await getChapterBank(book, chapter);
+
+  console.log(
+    `[Chapter Bank] ${book} ${chapter}: ${bank.questions.length} questions`
+  );
+
+  return bank;
+}
   
 
 // Questions are generated through a small serverless proxy you deploy once
