@@ -938,17 +938,52 @@ function renderMasterSetup(){
   ${m.groups.map(g=>renderGroupCard(g)).join('')}
   <button class="btn btn-outline" data-act="add-group" style="margin-bottom:18px;">+ Add group / contestant</button>
 
-  <hr class="divider">
-  <div class="row" style="gap:10px;">
-    <button class="btn btn-dark" data-act="gen-pools" ${S.busy?'disabled':''}>
-      ${S.busy?'<span class="spin"></span> Generating…':'Generate questions'}
-    </button>
-    <button class="btn btn-primary" data-act="open-session" ${S.busy?'disabled':''}>Open session &rarr;</button>
-  </div>
-  ${renderPoolStatusSummary()}
-  <div style="margin-top:14px;"><button class="linkbtn" data-act="go-home">&larr; exit setup</button></div>
-  `;
-}
+ <hr class="divider">
+
+<div class="row" style="gap:10px;">
+  <button class="btn btn-dark" data-act="gen-pools" ${S.busy?'disabled':''}>
+    ${S.busy?'<span class="spin"></span> Generating…':'Generate questions'}
+  </button>
+
+  <button class="btn btn-primary" data-act="open-session" ${S.busy?'disabled':''}>
+    Open session &rarr;
+  </button>
+</div>
+
+${renderPoolStatusSummary()}
+
+<div class="card" style="margin-top:16px;">
+  <div class="label">Import question pool</div>
+
+  <p class="sub" style="margin:6px 0 10px;">
+    Import questions generated externally. JSON format only.
+  </p>
+
+  <input
+    type="file"
+    id="questionPoolFile"
+    accept=".json,application/json"
+  >
+
+  <button
+    class="btn btn-outline"
+    type="button"
+    id="importQuestionPoolBtn"
+    style="margin-top:10px;"
+  >
+    Import questions
+  </button>
+
+  <div
+    id="questionImportStatus"
+    style="margin-top:8px;"
+  ></div>
+</div>
+
+<div style="margin-top:14px;">
+  <button class="linkbtn" data-act="go-home">&larr; exit setup</button>
+</div>
+`;
 function renderPoolStatusSummary(){
   const ids = [...new Set(S.meta.groups.filter(g=>g.poolId).map(g=>g.poolId))];
   if(!ids.length) return '';
