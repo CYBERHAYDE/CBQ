@@ -643,40 +643,242 @@ window.ensureChapterBank = ensureChapterBank;
    
 const CONCURRENCY = 1
 async function ensurePool(passages, target, onProgress){
+
   const poolId = poolIdFor(passages);
-  const key = 'sq:pool:'+poolId;
+  const key = 'sq:pool:' + poolId;
+
   let pool = await sGet(key);
-  if(!pool) pool = {poolId, passages, target, status:'idle', questions:[]};
-  if(pool.questions.length >= target && pool.status==='ready') return pool;
-  pool.status='generating'; pool.target = target;
-  await sSet(key, pool);
-  let rounds = 0;
-  while(pool.questions.length < target && rounds < 10){
-    rounds++;
-    const seen = new Set(pool.questions.map(q=>q.q));
-    const need = target - pool.questions.length;
-    const batchesThisRound = Math.max(1, Math.min(CONCURRENCY, Math.ceil(need/BATCH_SIZE)));
-    const promises = [];
-    for(let i=0;i<batchesThisRound;i++){
-      promises.push(generateBatch(passages, pool.questions.map(q=>q.q)).catch(e=>{ console.error('batch failed', e); return []; }));
+
+  if(!pool){
+    pool = {
+      poolId,
+      passages,
+      target,
+      status:'idle',
+      questions:[]
+    };
+  }
+
+  /*
+    ----------------------------------------------------------
+    FIRST: Try to build the session pool from imported
+    chapter banks.
+    ----------------------------------------------------------
+  */
+
+  let importedQuestions = [];
+
+  for(const passage of passages){
+
+    /*
+      A passage can cover multiple chapters.
+      Example:
+      Genesis 1-3
+    */
+
+    const start = parseInt(passage.start);
+    const end = parseInt(passage.end);
+
+    for(let chapter = start; chapter <= end; chapter++){
+
+      const bank = await getChapterBank(
+        passage.book,
+        chapter
+      );
+
+      if(
+        bank &&
+        Array.isArray(bank.questions) &&
+        bank.questions.length
+      ){
+
+        importedQuestions.push(
+          ...bank.questions
+        );
+
+        console.log(
+          `[Session Pool] Loaded ${bank.questions.length} ` +
+          `questions from ${passage.book} ${chapter}`
+        );
+      }
     }
-    const results = await Promise.all(promises);
+  }
+
+  /*
+    Remove duplicate questions.
+  */
+
+  const seen = new Set();
+
+  importedQuestions =
+    importedQuestions.filter(q => {
+
+      if(!q || !q.q || !q.a) return false;
+
+      const key = String(q.q)
+        .trim()
+        .toLowerCase();
+
+      if(seen.has(key)) return false;
+
+      seen.add(key);
+
+      return true;
+    });
+
+  /*
+    If we have imported questions, use them.
+  */
+
+  if(importedQuestions.length){
+
+    pool.questions = shuffle(importedQuestions)
+      .slice(0, target);
+
+    pool.status =
+      pool.questions.length >= target
+        ? 'ready'
+        : 'ready';
+
+    pool.target = target;
+    pool.passages = passages;
+
+    await sSet(key, pool);
+
+    console.log(
+      `[Session Pool] ${poolId}: ` +
+      `using ${pool.questions.length} imported questions`
+    );
+
+    if(onProgress){
+      onProgress({...pool});
+    }
+
+    return pool;
+  }
+
+  /*
+    ----------------------------------------------------------
+    FALLBACK:
+    If there is no imported chapter bank, use Gemini generation
+    exactly as before.
+    ----------------------------------------------------------
+  */
+
+  if(
+    pool.questions.length >= target &&
+    pool.status === 'ready'
+  ){
+
+    if(onProgress){
+      onProgress({...pool});
+    }
+
+    return pool;
+  }
+
+  pool.status = 'generating';
+  pool.target = target;
+
+  await sSet(key, pool);
+
+  let rounds = 0;
+
+  while(
+    pool.questions.length < target &&
+    rounds < 10
+  ){
+
+    rounds++;
+
+    const seenPool = new Set(
+      pool.questions.map(q =>
+        String(q.q).trim().toLowerCase()
+      )
+    );
+
+    const need =
+      target - pool.questions.length;
+
+    const batchesThisRound =
+      Math.max(
+        1,
+        Math.min(
+          CONCURRENCY,
+          Math.ceil(need / BATCH_SIZE)
+        )
+      );
+
+    const promises = [];
+
+    for(
+      let i = 0;
+      i < batchesThisRound;
+      i++
+    ){
+
+      promises.push(
+        generateBatch(
+          passages,
+          pool.questions.map(q => q.q)
+        ).catch(error => {
+
+          console.error(
+            '[Session Pool] Batch failed:',
+            error
+          );
+
+          return [];
+        })
+      );
+    }
+
+    const results =
+      await Promise.all(promises);
+
     for(const batch of results){
+
       for(const item of batch){
-        if(!seen.has(item.q) && pool.questions.length < target*1.4){
-          pool.questions.push(item); seen.add(item.q);
+
+        if(!item || !item.q) continue;
+
+        const qKey =
+          String(item.q)
+            .trim()
+            .toLowerCase();
+
+        if(
+          !seenPool.has(qKey) &&
+          pool.questions.length < target * 1.4
+        ){
+
+          pool.questions.push(item);
+
+          seenPool.add(qKey);
         }
       }
     }
+
     await sSet(key, pool);
-    if(onProgress) onProgress({...pool});
+
+    if(onProgress){
+      onProgress({...pool});
+    }
   }
-  pool.status='ready';
+
+  pool.status =
+    pool.questions.length >= target
+      ? 'ready'
+      : 'idle';
+
   await sSet(key, pool);
-  if(onProgress) onProgress({...pool});
+
+  if(onProgress){
+    onProgress({...pool});
+  }
+
   return pool;
 }
-
 // ---------- App state ----------
 let S = { view:'home', code:null, meta:null, role:null, poll:null, busy:false, toast:null, poolCache:{}, monitorData:{}, activePlay:null, resultsUsers:null };
 
