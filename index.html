@@ -965,14 +965,15 @@ ${renderPoolStatusSummary()}
     accept=".json,application/json"
   >
 
-  <button
-    class="btn btn-outline"
-    type="button"
-    id="importQuestionPoolBtn"
-    style="margin-top:10px;"
-  >
-    Import questions
-  </button>
+ <button
+  class="btn btn-outline"
+  type="button"
+  data-act="import-question-pool"
+  id="importQuestionPoolBtn"
+  style="margin-top:10px;"
+>
+  Import questions
+</button>
 
   <div
     id="questionImportStatus"
@@ -1188,7 +1189,118 @@ function renderBoardUI(play, isConsole){
 }
 
 // ---------- Events ----------
-function wireEvents(root){
+
+  async function handleQuestionPoolImport(){
+
+  const fileInput = document.getElementById('questionPoolFile');
+  const status = document.getElementById('questionImportStatus');
+
+  if(!fileInput || !fileInput.files.length){
+    if(status){
+      status.textContent = 'Please select a JSON file first.';
+      status.style.color = 'var(--red)';
+    }
+    return;
+  }
+
+  const file = fileInput.files[0];
+
+  try{
+
+    const text = await file.text();
+    const data = JSON.parse(text);
+
+    /*
+      Supported formats:
+
+      1. {
+           "book": "Genesis",
+           "chapter": 1,
+           "questions": [...]
+         }
+
+      2. [
+           {
+             "q": "...",
+             "a": "...",
+             "ref": "Genesis 1:1",
+             "src": "Genesis"
+           }
+         ]
+
+      If an array is supplied, the book/chapter are taken
+      from the first question's ref/src when possible.
+    */
+
+    let book = null;
+    let chapter = null;
+    let questions = null;
+
+    if(Array.isArray(data)){
+
+      questions = data;
+
+      if(data.length){
+        book = data[0].src || null;
+
+        const refMatch = String(data[0].ref || '')
+          .match(/^(.+?)\s+(\d+):/);
+
+        if(refMatch){
+          book = refMatch[1];
+          chapter = parseInt(refMatch[2]);
+        }
+      }
+
+    }else if(data && typeof data === 'object'){
+
+      book = data.book || data.src || null;
+      chapter = data.chapter || null;
+      questions = data.questions || data.items || null;
+
+    }
+
+    if(!book || !chapter){
+      throw new Error(
+        'Could not determine the Bible book and chapter from the JSON file.'
+      );
+    }
+
+    if(!Array.isArray(questions)){
+      throw new Error(
+        'The JSON file does not contain a questions array.'
+      );
+    }
+
+    const result = await importChapterQuestions(
+      book,
+      chapter,
+      questions
+    );
+
+    if(status){
+      status.style.color = 'var(--moss)';
+      status.textContent =
+        `Imported successfully: ${result.questions.length} total questions in ${book} ${chapter}.`;
+    }
+
+    console.log(
+      `[Chapter Import] ${book} ${chapter}: ` +
+      `${result.questions.length} total questions`
+    );
+
+  }catch(error){
+
+    console.error('[Chapter Import] Failed:', error);
+
+    if(status){
+      status.style.color = 'var(--red)';
+      status.textContent =
+        `Import failed: ${error.message}`;
+    }
+  }
+}
+  function wireEvents(root){
   root.querySelectorAll('[data-act]').forEach(node=>{
     const act = node.getAttribute('data-act');
     const evt = (node.tagName==='TEXTAREA' || (node.tagName==='INPUT' && act==='rename-group')) ? 'change' : 'click';
@@ -1210,8 +1322,15 @@ function wireEvents(root){
       }
       else if(act==='rm-passage'){ removePassage(node.dataset.gid, parseInt(node.dataset.idx)); }
       else if(act==='set-names'){ setGroupNames(node.dataset.gid, node.value); }
-      else if(act==='gen-pools'){ await generateAllPools(); }
-      else if(act==='open-session'){ await openSession(); }
+     else if(act==='gen-pools'){ 
+  await generateAllPools(); 
+}
+else if(act==='import-question-pool'){ 
+  await handleQuestionPoolImport(); 
+}
+else if(act==='open-session'){ 
+  await openSession(); 
+}
       else if(act==='end-session'){ await endSession(); }
       else if(act==='pick-num'){ pickNumber(parseInt(node.dataset.num)); }
       else if(act==='toggle-reveal'){ toggleReveal(); }
