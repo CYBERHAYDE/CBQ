@@ -262,6 +262,69 @@ async function saveChapterBank(book, chapter, questions){
 
   return bank;
 }
+async function importChapterQuestions(book, chapter, questions){
+  if(!book || !chapter){
+    throw new Error('Book and chapter are required');
+  }
+
+  if(!Array.isArray(questions)){
+    throw new Error('Questions must be an array');
+  }
+
+  const valid = questions
+    .filter(q => q && q.q && q.a)
+    .map(q => ({
+      id: q.id || ('q' + Math.random().toString(36).slice(2,9)),
+      q: String(q.q).trim().slice(0,300),
+      a: String(q.a).trim().slice(0,200),
+      ref: String(q.ref || '').trim().slice(0,60),
+      src: String(q.src || book).trim().slice(0,40),
+      book: book,
+      chapter: parseInt(chapter)
+    }))
+    .filter(q => q.q && q.a);
+
+  if(!valid.length){
+    throw new Error('No valid questions found');
+  }
+
+  const existingBank = await getChapterBank(book, chapter);
+
+  const seen = new Set(
+    existingBank.questions.map(q =>
+      String(q.q).trim().toLowerCase()
+    )
+  );
+
+  let added = 0;
+
+  for(const item of valid){
+    const key = item.q.toLowerCase();
+
+    if(seen.has(key)) continue;
+
+    existingBank.questions.push(item);
+    seen.add(key);
+    added++;
+  }
+
+  await saveChapterBank(
+    book,
+    chapter,
+    existingBank.questions
+  );
+
+  const result = await getChapterBank(book, chapter);
+
+  console.log(
+    `[Chapter Import] ${book} ${chapter}: ` +
+    `added ${added}, total ${result.questions.length}`
+  );
+
+  return result;
+}
+
+window.importChapterQuestions = importChapterQuestions;
 
 window.saveChapterBank = saveChapterBank;
 function passageStr(p){ return p.start===p.end ? `${p.book} ${p.start}` : `${p.book} ${p.start}-${p.end}`; }
