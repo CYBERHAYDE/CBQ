@@ -944,13 +944,105 @@ async function generateAllPools(){
   render();
 }
 async function openSession(){
-  if(!S.meta.groups.length || S.meta.groups.every(g=>!g.names.length)){
-    setToast('Add at least one group with names first'); return;
+
+  if(
+    !S.meta.groups.length ||
+    S.meta.groups.every(g=>!g.names.length)
+  ){
+    setToast('Add at least one group with names first');
+    return;
   }
-  S.meta.status='active'; await saveMeta();
-  S.view='m-live';
-  startPoll(refreshMonitor, 3500);
-  await refreshMonitor();
+
+  /*
+    Build the session pools from the existing chapter banks
+    before opening the session.
+  */
+
+  S.busy = true;
+  render();
+
+  try{
+
+    const uniquePools = {};
+
+    for(const g of S.meta.groups){
+
+      if(!g.passages || !g.passages.length){
+        continue;
+      }
+
+      const pid = poolIdFor(g.passages);
+
+      g.poolId = pid;
+      uniquePools[pid] = g.passages;
+    }
+
+    await saveMeta();
+
+    for(const pid of Object.keys(uniquePools)){
+
+      const passages = uniquePools[pid];
+
+      console.log(
+        `[Open Session] Preparing pool ${pid}`
+      );
+
+      const pool = await ensurePool(
+        passages,
+        S.meta.questionsPerPool,
+        (snap) => {
+
+          S.poolCache[pid] = snap;
+
+          console.log(
+            `[Open Session] Pool ${pid}: ` +
+            `${snap.questions.length} questions`
+          );
+
+          render();
+        }
+      );
+
+      S.poolCache[pid] = pool;
+    }
+
+    /*
+      Make sure the latest metadata is saved.
+    */
+
+    await saveMeta();
+
+    S.meta.status = 'active';
+
+    await saveMeta();
+
+    S.busy = false;
+
+    S.view = 'm-live';
+
+    startPoll(
+      refreshMonitor,
+      3500
+    );
+
+    await refreshMonitor();
+
+  }catch(error){
+
+    console.error(
+      '[Open Session] Failed:',
+      error
+    );
+
+    S.busy = false;
+
+    setToast(
+      'Could not prepare the question pool: ' +
+      (error.message || error)
+    );
+
+    render();
+  }
 }
 async function refreshMonitor(){
   const fresh = await loadMeta(S.code);
