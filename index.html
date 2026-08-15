@@ -238,16 +238,48 @@ function passagesStr(list){ return list.map(passageStr).join('; '); }
 function chapterBankKey(book, chapter){ return 'qb:'+bookCode(book)+':'+parseInt(chapter); }
 async function getChapterBank(book, chapter){
   const bank = await sGet(chapterBankKey(book, chapter));
-  return bank ? { book, chapter: parseInt(chapter), questions: Array.isArray(bank.questions) ? bank.questions : [] }
-              : { book, chapter: parseInt(chapter), questions: [] };
+
+  if(bank){
+    return {
+      book,
+      chapter: parseInt(chapter),
+      questions: Array.isArray(bank.questions) ? bank.questions : [],
+      source: bank.source || 'generated',
+      updatedAt: bank.updatedAt || null
+    };
+  }
+
+  return {
+    book,
+    chapter: parseInt(chapter),
+    questions: [],
+    source: 'generated',
+    updatedAt: null
+  };
 }
-async function saveChapterBank(book, chapter, questions){
-  const bank = { book, chapter: parseInt(chapter), questions: Array.isArray(questions) ? questions : [], updatedAt: Date.now() };
+}
+async function saveChapterBank(book, chapter, questions, source='generated'){
+  const bank = {
+    book,
+    chapter: parseInt(chapter),
+    questions: Array.isArray(questions) ? questions : [],
+    source,
+    updatedAt: Date.now()
+  };
+
   await sSet(chapterBankKey(book, chapter), bank);
   return bank;
 }
+}
 function chapterBankReady(bank){
-  return !!(bank && Array.isArray(bank.questions) && bank.questions.length >= MIN_CHAPTER_QUESTIONS);
+  if(!bank || !Array.isArray(bank.questions)) return false;
+
+  // Imported banks are authoritative. Even a small imported bank
+  // should never trigger Gemini generation automatically.
+  if(bank.source === 'imported') return bank.questions.length > 0;
+
+  // Generated banks must reach the normal minimum.
+  return bank.questions.length >= MIN_CHAPTER_QUESTIONS;
 }
 
 // Questions are generated through a small serverless proxy you deploy once
@@ -933,8 +965,16 @@ async function handleQuestionPoolImport(){
         seen.add(key);
         newOnes.push(item);
       }
-      existingBank.questions.push(...newOnes);
-      await saveChapterBank(book, chapter, existingBank.questions);
+     existingBank.questions.push(...newOnes);
+
+// A manual import makes this chapter authoritative.
+// Gemini will not top it up automatically.
+await saveChapterBank(
+  book,
+  chapter,
+  existingBank.questions,
+  'imported'
+);
       totalImported += newOnes.length;
       done++;
       chapterLines.push(`${book} ${chapter}: +${newOnes.length} (now ${existingBank.questions.length})`);
