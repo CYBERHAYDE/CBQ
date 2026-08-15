@@ -262,6 +262,8 @@ async function saveChapterBank(book, chapter, questions){
 
   return bank;
 }
+
+window.saveChapterBank = saveChapterBank;
 function passageStr(p){ return p.start===p.end ? `${p.book} ${p.start}` : `${p.book} ${p.start}-${p.end}`; }
 function passagesStr(list){ return list.map(passageStr).join('; '); }
 function chapterBankReady(bank){
