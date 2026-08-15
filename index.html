@@ -1197,50 +1197,76 @@ function renderBoardUI(play, isConsole){
 
   if(!fileInput || !fileInput.files.length){
     if(status){
-      status.textContent = 'Please select a JSON file first.';
-      status.style.color = 'var(--red)';
+      status.innerHTML = `
+        <div style="color:var(--red);font-weight:600;">
+          Please select a JSON file first.
+        </div>`;
     }
     return;
   }
 
   const file = fileInput.files[0];
 
+  function showProgress(percent, message){
+    if(!status) return;
+
+    status.innerHTML = `
+      <div style="margin-top:8px;">
+        <div style="
+          display:flex;
+          justify-content:space-between;
+          font-size:12px;
+          margin-bottom:5px;
+          color:var(--muted);
+        ">
+          <span>${esc(message)}</span>
+          <span>${percent}%</span>
+        </div>
+
+        <div style="
+          height:9px;
+          background:#E4E9F2;
+          border-radius:99px;
+          overflow:hidden;
+        ">
+          <div style="
+            height:100%;
+            width:${percent}%;
+            background:var(--moss);
+            transition:width .25s ease;
+          "></div>
+        </div>
+      </div>`;
+  }
+
   try{
 
+    showProgress(10, 'Reading JSON file…');
+
+    await new Promise(resolve => setTimeout(resolve, 150));
+
     const text = await file.text();
+
+    showProgress(25, 'Parsing JSON…');
+
+    await new Promise(resolve => setTimeout(resolve, 150));
+
     const data = JSON.parse(text);
-
-    /*
-      Supported formats:
-
-      1. {
-           "book": "Genesis",
-           "chapter": 1,
-           "questions": [...]
-         }
-
-      2. [
-           {
-             "q": "...",
-             "a": "...",
-             "ref": "Genesis 1:1",
-             "src": "Genesis"
-           }
-         ]
-
-      If an array is supplied, the book/chapter are taken
-      from the first question's ref/src when possible.
-    */
 
     let book = null;
     let chapter = null;
     let questions = null;
+
+    showProgress(40, 'Validating question data…');
+
+    await new Promise(resolve => setTimeout(resolve, 150));
 
     if(Array.isArray(data)){
 
       questions = data;
 
       if(data.length){
+
         book = data[0].src || null;
 
         const refMatch = String(data[0].ref || '')
@@ -1257,7 +1283,6 @@ function renderBoardUI(play, isConsole){
       book = data.book || data.src || null;
       chapter = data.chapter || null;
       questions = data.questions || data.items || null;
-
     }
 
     if(!book || !chapter){
@@ -1272,16 +1297,46 @@ function renderBoardUI(play, isConsole){
       );
     }
 
+    if(!questions.length){
+      throw new Error(
+        'The questions array is empty.'
+      );
+    }
+
+    showProgress(
+      55,
+      `Found ${questions.length} questions — importing ${book} ${chapter}…`
+    );
+
+    await new Promise(resolve => setTimeout(resolve, 150));
+
     const result = await importChapterQuestions(
       book,
       chapter,
       questions
     );
 
+    showProgress(90, 'Saving question bank…');
+
+    await new Promise(resolve => setTimeout(resolve, 250));
+
+    showProgress(100, 'Import complete');
+
     if(status){
-      status.style.color = 'var(--moss)';
-      status.textContent =
-        `Imported successfully: ${result.questions.length} total questions in ${book} ${chapter}.`;
+
+      const importedCount =
+        result.questions.length;
+
+      status.innerHTML += `
+        <div style="
+          margin-top:8px;
+          color:var(--moss);
+          font-size:13px;
+          font-weight:600;
+        ">
+          ✓ ${esc(book)} ${chapter} now has
+          ${importedCount} questions.
+        </div>`;
     }
 
     console.log(
@@ -1291,12 +1346,30 @@ function renderBoardUI(play, isConsole){
 
   }catch(error){
 
-    console.error('[Chapter Import] Failed:', error);
+    console.error(
+      '[Chapter Import] Failed:',
+      error
+    );
 
     if(status){
-      status.style.color = 'var(--red)';
-      status.textContent =
-        `Import failed: ${error.message}`;
+
+      status.innerHTML = `
+        <div style="
+          margin-top:8px;
+          color:var(--red);
+          font-size:13px;
+          font-weight:600;
+        ">
+          ✕ Import failed
+        </div>
+
+        <div style="
+          margin-top:4px;
+          color:var(--red);
+          font-size:12px;
+        ">
+          ${esc(error.message)}
+        </div>`;
     }
   }
 }
