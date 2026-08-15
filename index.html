@@ -984,6 +984,8 @@ ${renderPoolStatusSummary()}
   <button class="linkbtn" data-act="go-home">&larr; exit setup</button>
 </div>
 `;
+}
+
 function renderPoolStatusSummary(){
   const ids = [...new Set(S.meta.groups.filter(g=>g.poolId).map(g=>g.poolId))];
   if(!ids.length) return '';
