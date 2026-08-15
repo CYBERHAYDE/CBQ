@@ -577,36 +577,7 @@ async function ensureChapterBank(book, chapter, onProgress){
 
 window.ensureChapterBank = ensureChapterBank;
 
-    const existing = new Set(
-      bank.questions.map(q => String(q.q).trim().toLowerCase())
-    );
-
-    for(const item of batch){
-      const questionKey = String(item.q).trim().toLowerCase();
-
-      if(
-        questionKey &&
-        !existing.has(questionKey) &&
-        bank.questions.length < MIN_CHAPTER_QUESTIONS
-      ){
-        bank.questions.push(item);
-        existing.add(questionKey);
-      }
-    }
-
-    await saveChapterBank(
-      book,
-      chapter,
-      bank.questions
-    );
-
-    if(onProgress) onProgress({...bank});
-  }
-
-  return bank;
-}
-
-window.ensureChapterBank = ensureChapterBank;
+   
 const CONCURRENCY = 1
 async function ensurePool(passages, target, onProgress){
   const poolId = poolIdFor(passages);
