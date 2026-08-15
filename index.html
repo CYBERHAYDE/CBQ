@@ -369,6 +369,57 @@ Return ONLY a raw JSON array, nothing else, in exactly this shape:
     }));
 }
 window.generateChapterBatch = generateChapterBatch;
+
+async function ensureChapterBank(book, chapter, onProgress){
+  let bank = await getChapterBank(book, chapter);
+
+  if(chapterBankReady(bank)){
+    if(onProgress) onProgress({...bank});
+    return bank;
+  }
+
+  while(bank.questions.length < MIN_CHAPTER_QUESTIONS){
+
+    const needed = MIN_CHAPTER_QUESTIONS - bank.questions.length;
+
+    const recentQs = bank.questions.map(q => q.q);
+
+    const batch = await generateChapterBatch(
+      book,
+      chapter,
+      recentQs
+    );
+
+    const existing = new Set(
+      bank.questions.map(q => String(q.q).trim().toLowerCase())
+    );
+
+    for(const item of batch){
+      const questionKey = String(item.q).trim().toLowerCase();
+
+      if(
+        questionKey &&
+        !existing.has(questionKey) &&
+        bank.questions.length < MIN_CHAPTER_QUESTIONS
+      ){
+        bank.questions.push(item);
+        existing.add(questionKey);
+      }
+    }
+
+    await saveChapterBank(
+      book,
+      chapter,
+      bank.questions
+    );
+
+    if(onProgress) onProgress({...bank});
+  }
+
+  return bank;
+}
+
+window.ensureChapterBank = ensureChapterBank;
 const CONCURRENCY = 1
 async function ensurePool(passages, target, onProgress){
   const poolId = poolIdFor(passages);
