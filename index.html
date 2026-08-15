@@ -264,6 +264,14 @@ async function saveChapterBank(book, chapter, questions){
 }
 function passageStr(p){ return p.start===p.end ? `${p.book} ${p.start}` : `${p.book} ${p.start}-${p.end}`; }
 function passagesStr(list){ return list.map(passageStr).join('; '); }
+function chapterBankReady(bank){
+  return !!(
+    bank &&
+    Array.isArray(bank.questions) &&
+    bank.questions.length >= MIN_CHAPTER_QUESTIONS
+  );
+}
+  
 
 // Questions are generated through a small serverless proxy you deploy once
 // (Cloudflare Worker, free). It holds your Gemini key server-side so it
