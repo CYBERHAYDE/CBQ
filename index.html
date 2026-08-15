@@ -226,6 +226,9 @@ async function sSet(key, val){
 function poolIdFor(passages){
   return 'pool_' + passages.map(p=>`${bookCode(p.book)}${p.start}-${p.end}`).sort().join('_').slice(0,140);
 }
+function chapterBankKey(book, chapter){
+  return `qb:${bookCode(book)}:${parseInt(chapter)}`;
+}
 function passageStr(p){ return p.start===p.end ? `${p.book} ${p.start}` : `${p.book} ${p.start}-${p.end}`; }
 function passagesStr(list){ return list.map(passageStr).join('; '); }
 
