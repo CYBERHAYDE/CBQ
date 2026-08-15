@@ -229,6 +229,39 @@ function poolIdFor(passages){
 function chapterBankKey(book, chapter){
   return `qb:${bookCode(book)}:${parseInt(chapter)}`;
 }
+async function getChapterBank(book, chapter){
+  const key = chapterBankKey(book, chapter);
+  const bank = await sGet(key);
+
+  if(!bank){
+    return {
+      book,
+      chapter: parseInt(chapter),
+      questions: []
+    };
+  }
+
+  return {
+    book,
+    chapter: parseInt(chapter),
+    questions: Array.isArray(bank.questions) ? bank.questions : []
+  };
+}
+
+async function saveChapterBank(book, chapter, questions){
+  const key = chapterBankKey(book, chapter);
+
+  const bank = {
+    book,
+    chapter: parseInt(chapter),
+    questions: Array.isArray(questions) ? questions : [],
+    updatedAt: Date.now()
+  };
+
+  await sSet(key, bank);
+
+  return bank;
+}
 function passageStr(p){ return p.start===p.end ? `${p.book} ${p.start}` : `${p.book} ${p.start}-${p.end}`; }
 function passagesStr(list){ return list.map(passageStr).join('; '); }
 
