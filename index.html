@@ -368,7 +368,7 @@ Return ONLY a raw JSON array, nothing else, in exactly this shape:
       chapter: parseInt(chapter)
     }));
 }
-
+window.generateChapterBatch = generateChapterBatch;
 const CONCURRENCY = 1
 async function ensurePool(passages, target, onProgress){
   const poolId = poolIdFor(passages);
